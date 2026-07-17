@@ -1,0 +1,81 @@
+<!-- Hotspot Arcade phone client. Single-file at build time: build.mjs inlines
+     core/style.css into <style> and the core/games JS into <script>. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0B0B0C">
+<title>Hotspot Arcade</title>
+<style>/*__CSS__*/</style>
+
+<!-- Faint CRT scanline overlay -->
+<div class="scan" aria-hidden="true"></div>
+
+<!-- Sticky header: wordmark + blinking cursor, status dot + nick -->
+<header class="hdr">
+  <span class="wordmark">Hotspot Arcade<span class="cur" aria-hidden="true">&#9616;</span></span>
+  <span class="hdr-right">
+    <span id="dot" class="dot warn" title="connection"></span>
+    <span id="hdr-nick"></span>
+  </span>
+</header>
+
+<!-- Reconnect banner -->
+<div id="netbar" class="netbar hide">Reconnecting...</div>
+
+<!-- 1. Landing / nickname -->
+<section id="landing" class="screen">
+  <div class="brand">
+    <div class="pixmark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p class="tag">Local multiplayer. No internet needed.</p>
+  </div>
+  <label class="field">
+    <span class="sub">Your nickname</span>
+    <input id="nick" maxlength="12" autocomplete="off" autocapitalize="off"
+           spellcheck="false" placeholder="e.g. Nova">
+  </label>
+  <button id="play" class="btn big">Play</button>
+  <a id="openbrowser" class="hint-link" href="http://192.168.4.1/">Open in browser</a>
+  <p class="hint">If this page closes, rejoin the WiFi and open
+     <b>192.168.4.1</b> in your browser.</p>
+</section>
+
+<!-- 2. Lobby -->
+<section id="lobby" class="screen hide">
+  <header class="bar"><h2>Lobby</h2><span id="lobby-me" class="me"></span></header>
+  <div id="lobby-game" class="game-state">Waiting for the host to pick a game.</div>
+  <ul id="players" class="players"></ul>
+</section>
+
+<!-- 3. Trivia -->
+<section id="trivia" class="screen hide">
+  <header class="bar"><h2>Trivia</h2><span id="tv-rank" class="me"></span></header>
+  <div id="tv-status" class="game-state hide">Get ready...</div>
+  <div id="tv-bar" class="timebar hide"><i></i></div>
+  <h3 id="tv-q" class="question"></h3>
+  <div id="tv-opts" class="opts"></div>
+  <div id="tv-scores" class="scores"></div>
+</section>
+
+<!-- 4. Connect 4 -->
+<section id="c4" class="screen hide">
+  <header class="bar"><h2>Connect 4</h2><button id="c4-leave" class="btn ghost sm hide">Leave</button></header>
+
+  <div id="c4-lobby">
+    <div id="c4-incoming" class="challenges"></div>
+    <p class="sub">Challenge a player</p>
+    <ul id="c4-players" class="players"></ul>
+  </div>
+
+  <div id="c4-match" class="hide">
+    <div id="c4-turn" class="turn"></div>
+    <div id="c4-board" class="board"></div>
+  </div>
+
+  <div id="c4-over" class="hide over">
+    <div id="c4-result" class="result"></div>
+    <button id="c4-back" class="btn big">Back to lobby</button>
+  </div>
+</section>
+
+<div id="toast" class="toast hide"></div>
+
+<script>/*__JS__*/</script>

@@ -1,0 +1,12 @@
+App(
+    appid="hotspot_arcade",
+    name="[ESP32] Hotspot Arcade",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="hotspot_arcade_app",
+    requires=["gui"],
+    stack_size=8 * 1024,
+    fap_category="GPIO",
+    fap_author="Tarik Caramanico",
+    fap_version="0.1.0",
+    fap_description="Host an offline multiplayer game hotspot (trivia + Connect Four) on the ESP32-S2 WiFi dev board. Players join and play in their browser.",
+)

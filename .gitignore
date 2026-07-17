@@ -1,0 +1,23 @@
+# Flipper build output
+flipper/hotspot-arcade/dist/
+flipper/hotspot-arcade/.vscode/
+*.fap
+
+# ESP build output
+esp32/hotspot-arcade-fw/build/
+
+# Web build output is committed on release, but ignore local node cruft
+web/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+
+# ufbt
+.ufbt/
+
+# OS
+.DS_Store
+
+# Local dev notes (not committed)
+CLAUDE.md
