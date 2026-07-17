@@ -63,11 +63,16 @@ static void ha_trivia_render(HotspotArcadeApp* app) {
 
 void hotspot_arcade_scene_host_trivia_on_enter(void* context) {
     HotspotArcadeApp* app = context;
-    if(!ha_trivia_begin(app)) {
+    const char* err = NULL;
+    if(furi_string_empty(app->trivia_pack_path)) {
+        err = "Pick a trivia pack\nfrom the main menu.";
+    } else if(!ha_trivia_begin(app)) {
+        err = "That pack has no\nvalid questions.";
+    }
+    if(err) {
         DialogMessage* m = dialog_message_alloc();
         dialog_message_set_header(m, "Trivia", 64, 2, AlignCenter, AlignTop);
-        dialog_message_set_text(
-            m, "Pack has no valid\nquestions.", 64, 32, AlignCenter, AlignCenter);
+        dialog_message_set_text(m, err, 64, 32, AlignCenter, AlignCenter);
         dialog_message_set_buttons(m, NULL, "OK", NULL);
         dialog_message_show(app->dialogs, m);
         dialog_message_free(m);
