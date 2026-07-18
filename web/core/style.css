@@ -213,21 +213,22 @@ h3{margin:0; font-weight:600}
 .board.ttt .cell::after{border-radius:0; inset:22%}
 .board.ttt .cell.opp::after{background:transparent; box-shadow:inset 0 0 0 5px var(--disc-opp)}
 
-/* Dots & Boxes */
-.dotsgrid{display:grid; align-items:center; justify-items:stretch;
+/* Dots & Boxes: a big square board that fills the width. Each edge cell is a full
+   tap target; the visible line is a thin centered band (classic dots look). */
+.dotsgrid{display:grid; width:100%; aspect-ratio:1; max-height:66vh;
   background:var(--surface); border:2px solid var(--line); border-radius:var(--radius);
-  padding:8px; gap:0; transition:opacity .1s ease-out}
+  padding:10px; gap:0; box-sizing:border-box; transition:opacity .1s ease-out}
 .dotsgrid:not(.mine){opacity:.7}
-.dot-node{width:10px; height:10px; background:var(--text-dim); border-radius:50%}
-.edge{background:transparent}
-.edge.h{height:6px; align-self:center}
-.edge.v{width:6px; height:100%; min-height:26px; justify-self:center}
-.edge.on{background:var(--text)}
+.dot-node{width:100%; height:100%; background:var(--text-dim); border-radius:50%}
+.edge{position:relative; background:transparent}
+.edge::before{content:""; position:absolute; background:transparent}
+.edge.h::before{left:8%; right:8%; top:50%; height:6px; transform:translateY(-50%)}
+.edge.v::before{top:8%; bottom:8%; left:50%; width:6px; transform:translateX(-50%)}
+.edge.on::before{background:var(--text)}
 .edge.tap{cursor:pointer}
-.edge.h.tap{background:var(--surface-2)}
-.edge.v.tap{background:var(--surface-2)}
-.edge.tap:active{background:var(--orange)}
-.box{width:100%; height:100%; min-height:26px; background:transparent}
+.edge.tap::before{background:var(--surface-2)}
+.edge.tap:active::before{background:var(--orange)}
+.box{background:transparent; margin:2px}
 .box.you{background:var(--disc-you)}
 .box.opp{background:var(--disc-opp)}
 .dscore{display:flex; justify-content:space-between; gap:10px; font-weight:700;

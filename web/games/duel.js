@@ -53,8 +53,10 @@
     var myTurn = m.turn === m.you;
     var board = $("duel-board");
     board.className = "dotsgrid" + (myTurn ? " mine" : "");
-    // Columns: dot, (edge, dot) repeated w times. Edges flex, dots are fixed.
-    board.style.gridTemplateColumns = "10px" + " 1fr 10px".repeat(w);
+    // dot rows/cols are fixed and thin; edge + box tracks flex so the whole board
+    // fills its (square) container with big, tap-friendly cells.
+    board.style.gridTemplateColumns = "12px" + " 1fr 12px".repeat(w);
+    board.style.gridTemplateRows = "12px" + " 1fr 12px".repeat(h);
     board.innerHTML = "";
 
     for (var gr = 0; gr <= 2 * h; gr++) {
