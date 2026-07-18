@@ -17,8 +17,5 @@ bool ha_storage_read_file(const char* path, FuriString* out, size_t cap);
 // Returns false if the manifest is missing or has no entries.
 bool ha_storage_load_manifest(HotspotArcadeApp* app);
 
-// Load the selected trivia pack into app->trivia_pack and count its questions.
-// Returns false if no pack is selected or it can't be read.
-bool ha_storage_load_trivia(HotspotArcadeApp* app);
 
 void ha_timestamp(FuriString* out);

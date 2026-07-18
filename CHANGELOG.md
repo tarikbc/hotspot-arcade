@@ -8,10 +8,14 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ### Added
 
+- **Phone-driven trivia** (firmware v3): trivia is now self-organizing and hosted entirely
+  by the ESP. Players ready up and vote a topic in the lobby, an all-ready 5-second
+  countdown starts the round, questions reveal when everyone answers or a timer expires,
+  a collapsible leaderboard rides along, and a final podium ends it (with Play again). The
+  Flipper streams every SD pack as a votable topic at session start.
 - **Four new games** on the shared engine: **Tic-Tac-Toe** and **Dots & Boxes** (1v1
   duels alongside Connect Four, with a rematch), **Drawing & guessing** (rotating drawer,
   stroke relay, chat), and real-time **Pong** (fixed-timestep physics tick).
-- **Trivia depth**: live A/B/C/D answer bars and a final podium on the Flipper.
 - **Phone feel**: WebAudio sound effects, `navigator.vibrate` haptics, and micro-animations
   across the web client. Unified duel renderer (`web/games/duel.js`).
 - **On-device ESP flasher**: flash the bundled firmware straight from the Flipper over the

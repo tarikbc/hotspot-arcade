@@ -133,10 +133,9 @@ static void ha_dashboard(HotspotArcadeApp* app) {
     // Left picks the game; Right shows scores; Center hosts the active game
     // (drive trivia questions, or watch the match feed).
     widget_add_button_element(app->widget, GuiButtonTypeLeft, "Games", ha_lobby_button_cb, app);
-    if(app->active_game == HA_GAME_TRIVIA) {
-        widget_add_button_element(
-            app->widget, GuiButtonTypeCenter, "Start", ha_lobby_button_cb, app);
-    } else if(app->active_game != HA_GAME_NONE) {
+    // Trivia runs itself (players ready up + vote on their phones); the other games
+    // are player-driven too but get a host feed view.
+    if(app->active_game != HA_GAME_NONE && app->active_game != HA_GAME_TRIVIA) {
         widget_add_button_element(
             app->widget, GuiButtonTypeCenter, "Feed", ha_lobby_button_cb, app);
     }
@@ -235,9 +234,7 @@ bool hotspot_arcade_scene_lobby_on_event(void* context, SceneManagerEvent event)
         scene_manager_next_scene(app->scene_manager, HaSceneGameSelect);
         return true;
     case HaEventHostGame:
-        if(app->active_game == HA_GAME_TRIVIA)
-            scene_manager_next_scene(app->scene_manager, HaSceneHostTrivia);
-        else if(app->active_game != HA_GAME_NONE)
+        if(app->active_game != HA_GAME_NONE && app->active_game != HA_GAME_TRIVIA)
             scene_manager_next_scene(app->scene_manager, HaSceneHostDuel);
         return true;
     case HaEventShowLeaderboard:

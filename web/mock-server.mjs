@@ -80,20 +80,114 @@ function handle(socket) {
   }
   function nextStage() { stage++; lobby("none"); at(700, startStage); }
 
-  // ---- trivia ---------------------------------------------------------------
+  // ---- trivia (fully phone-driven, self-organizing) -------------------------
+  // The mock plays the ESP referee: it tracks ready/vote state, runs a 5s
+  // countdown once everyone is ready, asks a few questions (bots auto-answer),
+  // reveals with counts + a moving leaderboard, then a final + `again` restart.
+  const QDUR = 8000;
+  const TOPIC_NAMES = ["Science", "Movies", "History"];
+  const QUESTIONS = [
+    { q: "Which planet is the largest in our solar system?", o: ["Mars", "Jupiter", "Saturn", "Neptune"], correct: 1 },
+    { q: "What is the chemical symbol for gold?", o: ["Gd", "Au", "Ag", "Go"], correct: 1 },
+    { q: "How many continents are there on Earth?", o: ["5", "6", "7", "8"], correct: 2 },
+  ];
+  let tv = null;
+
+  function tvBoard() {
+    return [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], score: tv.score[p] }))
+      .sort((a, b) => b.score - a.score);
+  }
+  function tvTopics() {
+    return TOPIC_NAMES.map((name, i) => ({
+      name, votes: Object.values(tv.votes).filter((v) => v === i).length,
+    }));
+  }
+  function sendTvLobby() {
+    send({
+      t: "trivia", phase: "lobby",
+      players: [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], ready: !!tv.ready[p] })),
+      topics: tvTopics(),
+      myvote: (ME in tv.votes) ? tv.votes[ME] : -1,
+      myready: !!tv.ready[ME],
+    });
+  }
   function runTrivia() {
     lobby("trivia");
-    const q = { q: "Which planet is the largest in our solar system?",
-      o: ["Mars", "Jupiter", "Saturn", "Neptune"], correct: 1 };
-    at(300, () => send({ t: "trivia", phase: "idle", scores: sc() }));
-    at(1200, () => send({ t: "trivia", phase: "question", i: 0, q: q.q, o: q.o,
-      dur: 8000, deadline: Date.now() + 8000, mine: -1, counts: [0, 0, 0, 0], scores: sc() }));
-    at(9600, () => {
-      scores[BOT] += 100; scores[ME] += 80;
-      send({ t: "trivia", phase: "reveal", i: 0, q: q.q, o: q.o, correct: q.correct,
-        mine: 1, counts: [1, 2, 0, 0], scores: sc() });
+    tv = { phase: "lobby", ready: {}, votes: {}, score: { 1: 0, 2: 0, 3: 0 }, qi: -1, answers: {} };
+    at(300, sendTvLobby);
+    // Bots wander in, vote, and ready up so the human can be the last to ready.
+    at(1600, () => { tv.votes[BOT] = 1; if (tv.phase === "lobby") sendTvLobby(); });
+    at(2600, () => { tv.votes[CATHY] = 0; tv.ready[CATHY] = true; if (tv.phase === "lobby") { sendTvLobby(); checkStart(); } });
+    at(3600, () => { tv.ready[BOT] = true; if (tv.phase === "lobby") { sendTvLobby(); checkStart(); } });
+  }
+  function checkStart() {
+    if (tv.phase === "lobby" && [1, 2, 3].every((p) => tv.ready[p])) startCountdown();
+  }
+  function startCountdown() {
+    tv.phase = "countdown";
+    const votes = tvTopics();
+    let best = 0;
+    votes.forEach((t, i) => { if (t.votes > votes[best].votes) best = i; });
+    tv.topicName = votes[best].name;
+    tv.secs = 5;
+    tickCountdown();
+  }
+  function tickCountdown() {
+    if (tv.phase !== "countdown") return;                 // cancelled by an un-ready
+    send({ t: "trivia", phase: "countdown", secs: tv.secs, topic: tv.topicName });
+    if (tv.secs <= 1) { at(1000, startQuestions); return; }
+    tv.secs--;
+    at(1000, tickCountdown);
+  }
+  function startQuestions() {
+    if (tv.phase !== "countdown") return;
+    tv.qi = 0;
+    askQuestion();
+  }
+  function sendQuestion() {
+    const Q = QUESTIONS[tv.qi];
+    send({
+      t: "trivia", phase: "question", i: tv.qi, n: QUESTIONS.length, q: Q.q, o: Q.o,
+      dur: QDUR, deadline: tv.deadline, mine: (ME in tv.answers) ? tv.answers[ME] : -1,
+      answered: Object.keys(tv.answers).length, total: 3, topic: tv.topicName, board: tvBoard(),
     });
-    at(13000, nextStage);
+  }
+  function askQuestion() {
+    tv.phase = "question";
+    tv.answers = {};
+    tv.deadline = Date.now() + QDUR;
+    sendQuestion();
+    at(1400, () => botAnswer(BOT));
+    at(2600, () => botAnswer(CATHY));
+    at(QDUR + 300, revealQuestion);
+  }
+  function botAnswer(p) {
+    if (tv.phase !== "question" || (p in tv.answers)) return;
+    const Q = QUESTIONS[tv.qi];
+    tv.answers[p] = Math.random() < 0.6 ? Q.correct : Math.floor(Math.random() * 4);
+    sendQuestion();
+  }
+  function revealQuestion() {
+    if (tv.phase !== "question") return;
+    tv.phase = "reveal";
+    const Q = QUESTIONS[tv.qi];
+    const counts = [0, 0, 0, 0];
+    let gained = 0;
+    [1, 2, 3].forEach((p) => {
+      if (!(p in tv.answers)) return;
+      counts[tv.answers[p]]++;
+      if (tv.answers[p] === Q.correct) { tv.score[p] += 100; if (p === ME) gained = 100; }
+    });
+    send({
+      t: "trivia", phase: "reveal", i: tv.qi, n: QUESTIONS.length, q: Q.q, o: Q.o,
+      correct: Q.correct, counts, mine: (ME in tv.answers) ? tv.answers[ME] : -1,
+      gained, board: tvBoard(),
+    });
+    at(3200, () => {
+      tv.qi++;
+      if (tv.qi >= QUESTIONS.length) { tv.phase = "final"; send({ t: "trivia", phase: "final", board: tvBoard() }); }
+      else askQuestion();
+    });
   }
 
   // ---- duels (c4 / ttt / dots) ---------------------------------------------
@@ -330,7 +424,20 @@ function handle(socket) {
     if (m.t === "leaveGame") { nextStage(); return; }
 
     if (cur === "trivia") {
-      if (m.t === "answer") send({ t: "toast", msg: "Locked in " + "ABCD"[m.c] });
+      if (!tv) return;
+      if (m.t === "ready") {
+        tv.ready[ME] = !!m.ready;
+        if (!m.ready && tv.phase === "countdown") { tv.phase = "lobby"; sendTvLobby(); }
+        else if (tv.phase === "lobby") { sendTvLobby(); checkStart(); }
+      } else if (m.t === "vote" && typeof m.topic === "number") {
+        tv.votes[ME] = m.topic;
+        if (tv.phase === "lobby") sendTvLobby();
+      } else if (m.t === "answer" && typeof m.c === "number") {
+        if (tv.phase === "question" && !(ME in tv.answers)) { tv.answers[ME] = m.c; sendQuestion(); }
+      } else if (m.t === "again") {
+        clearTimers();
+        runTrivia();     // fresh lobby, scores reset
+      }
       return;
     }
     if (cur === "c4" || cur === "ttt" || cur === "dots") {

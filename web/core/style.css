@@ -179,6 +179,77 @@ h3{margin:0; font-weight:600}
   padding:5px 10px; font-size:12px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em}
 .scores span b{color:var(--orange)}
 
+/* Trivia — self-organizing lobby (ready + topic vote) */
+.players .rdy{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-mute);
+  font-weight:700; flex:none}
+.players .rdy.on{color:var(--good)}
+.topics{display:flex; flex-direction:column; gap:8px}
+.topic{
+  display:flex; align-items:center; gap:12px; text-align:left; font-family:var(--font);
+  min-height:52px; border-radius:var(--radius); border:2px solid var(--line);
+  background:var(--surface-2); color:var(--text); font-size:15px; font-weight:600;
+  padding:10px 14px; cursor:pointer; transition:border-color .1s ease-out;
+  animation:tile-in .16s ease-out both;
+}
+.topic:active{transform:translateY(1px); border-color:var(--orange)}
+.topic .txt{flex:1}
+.topic .votes{color:var(--orange); font-weight:700; font-variant-numeric:tabular-nums;
+  min-width:22px; text-align:right}
+.topic.mine{border-color:var(--orange)}
+.topic.mine .votes{background:var(--orange); color:var(--on-orange); padding:2px 8px; border-radius:2px}
+/* Ready CTA: orange fill to prompt tapping; ghost once you're ready. */
+#tv-ready.on{background:transparent; color:var(--good); border-color:var(--good); box-shadow:none}
+
+/* Trivia — countdown */
+.count{display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; min-height:52vh; text-align:center}
+.count-topic{color:var(--orange); text-transform:uppercase; letter-spacing:.1em;
+  font-weight:700; font-size:16px}
+.count-num{font-size:96px; font-weight:700; line-height:1; color:var(--text);
+  font-variant-numeric:tabular-nums}
+.count-num.pop{animation:count-pop .3s ease-out}
+@keyframes count-pop{from{transform:scale(1.35); opacity:.35}to{transform:none; opacity:1}}
+
+/* Trivia — question head (meta + answered count) */
+.tv-head .me:last-child{color:var(--orange)}
+
+/* Trivia — collapsible leaderboard bar, pinned under the header */
+.lead{position:sticky; top:calc(48px + env(safe-area-inset-top)); z-index:20;
+  background:var(--surface); border:2px solid var(--line); border-radius:var(--radius)}
+.lead.bump{animation:lead-bump .45s ease-out}
+@keyframes lead-bump{0%{border-color:var(--orange)}100%{border-color:var(--line)}}
+.lead-bar{display:flex; align-items:center; gap:10px; width:100%; font-family:var(--font);
+  background:transparent; border:0; color:var(--text); min-height:40px; padding:8px 12px;
+  cursor:pointer; text-align:left}
+.lead-sum{flex:1; font-weight:700; font-size:13px; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-variant-numeric:tabular-nums}
+.lead-sum b{color:var(--orange)}
+.lead-hint{color:var(--text-dim); font-size:11px; text-transform:uppercase; letter-spacing:.08em}
+.lead-caret{color:var(--text-dim); font-size:10px}
+.lead-full{list-style:none; margin:0; padding:0 8px 8px; display:flex; flex-direction:column; gap:0}
+.lead-full li{display:flex; align-items:center; gap:10px; padding:7px 4px;
+  border-top:2px solid var(--line); font-size:14px}
+.lead-full li.self{color:var(--orange)}
+.lead-full .r{width:20px; text-align:right; color:var(--text-dim); font-weight:700;
+  font-variant-numeric:tabular-nums}
+.lead-full li.self .r{color:var(--orange)}
+.lead-full .pn{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.lead-full .ps{font-weight:700; font-variant-numeric:tabular-nums}
+
+/* Trivia — final podium */
+.podium{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
+.podium .place{display:flex; align-items:center; gap:12px; min-height:52px;
+  background:var(--surface-2); border:2px solid var(--line); border-radius:var(--radius); padding:10px 14px}
+.podium .place.self{border-left:4px solid var(--orange)}
+.podium .rank{width:34px; height:34px; flex:none; display:grid; place-items:center;
+  font-weight:700; border:2px solid var(--line); background:var(--bg); color:var(--text-dim)}
+.podium .pn{flex:1; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.podium .ps{color:var(--orange); font-weight:700; font-variant-numeric:tabular-nums}
+.podium .p1{border-color:var(--orange)}
+.podium .p1 .rank{background:var(--orange); color:var(--on-orange); border-color:var(--orange)}
+.podium .p2 .rank{background:var(--disc-opp); color:var(--on-orange); border-color:var(--disc-opp)}
+.podium .p3 .rank{background:var(--orange-dim); color:var(--text); border-color:var(--orange-dim)}
+
 /* Connect Four */
 .challenges{display:flex; flex-direction:column; gap:8px}
 .challenge{
@@ -277,5 +348,7 @@ h3{margin:0; font-weight:600}
 @media (prefers-reduced-motion:reduce){
   .cur{animation:none}
   .cell.drop::after{animation:none}
+  .count-num.pop{animation:none}
+  .lead.bump{animation:none}
   *{transition:none!important}
 }

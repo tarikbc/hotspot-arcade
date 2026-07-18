@@ -8,17 +8,11 @@ typedef enum {
     MenuLeaderboard,
     MenuConsole,
     MenuStop,
-    MenuPack,
     MenuSsid,
     MenuFlashFirmware,
     MenuSettings,
     MenuAbout,
 } MainMenuIndex;
-
-static const char* ha_basename(const char* path) {
-    const char* slash = strrchr(path, '/');
-    return (slash && *(slash + 1)) ? slash + 1 : path;
-}
 
 static void ha_menu_cb(void* context, uint32_t index) {
     HotspotArcadeApp* app = context;
@@ -33,25 +27,6 @@ static void ha_show_message(HotspotArcadeApp* app, const char* header, const cha
     dialog_message_show(app->dialogs, m);
     dialog_message_free(m);
 }
-
-static void ha_pick_pack(HotspotArcadeApp* app) {
-    DialogsFileBrowserOptions opts;
-    dialog_file_browser_set_basic_options(&opts, ".txt", NULL);
-    opts.base_path = HA_TRIVIA_DIR;
-    FuriString* start = furi_string_alloc_set_str(HA_TRIVIA_DIR);
-    FuriString* result = furi_string_alloc();
-    if(!furi_string_empty(app->trivia_pack_path))
-        furi_string_set(result, app->trivia_pack_path);
-    else
-        furi_string_set(result, HA_TRIVIA_DIR);
-    if(dialog_file_browser_show(app->dialogs, result, start, &opts)) {
-        furi_string_set(app->trivia_pack_path, result);
-        ha_storage_save_config(app);
-    }
-    furi_string_free(start);
-    furi_string_free(result);
-}
-
 
 static void ha_menu_build(HotspotArcadeApp* app) {
     submenu_reset(app->submenu);
@@ -68,14 +43,6 @@ static void ha_menu_build(HotspotArcadeApp* app) {
     }
 
     FuriString* label = furi_string_alloc();
-    furi_string_printf(
-        label,
-        "Trivia: %s",
-        furi_string_empty(app->trivia_pack_path) ?
-            "(none)" :
-            ha_basename(furi_string_get_cstr(app->trivia_pack_path)));
-    submenu_add_item(app->submenu, furi_string_get_cstr(label), MenuPack, ha_menu_cb, app);
-
     furi_string_printf(label, "SSID: %s", furi_string_get_cstr(app->ssid));
     submenu_add_item(app->submenu, furi_string_get_cstr(label), MenuSsid, ha_menu_cb, app);
     furi_string_free(label);
@@ -132,11 +99,6 @@ bool hotspot_arcade_scene_main_menu_on_event(void* context, SceneManagerEvent ev
         return true;
     case MenuStop:
         ha_session_stop(app);
-        ha_menu_build(app);
-        view_dispatcher_switch_to_view(app->view_dispatcher, HaViewSubmenu);
-        return true;
-    case MenuPack:
-        ha_pick_pack(app);
         ha_menu_build(app);
         view_dispatcher_switch_to_view(app->view_dispatcher, HaViewSubmenu);
         return true;

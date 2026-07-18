@@ -34,14 +34,7 @@ void ha_storage_load_config(HotspotArcadeApp* app) {
                 furi_string_set(app->ssid, tmp);
                 have_ssid = true;
             }
-            flipper_format_rewind(ff);
-            if(flipper_format_read_string(ff, "TriviaPack", tmp)) {
-                furi_string_set(app->trivia_pack_path, tmp);
-            }
             uint32_t v = 0;
-            flipper_format_rewind(ff);
-            if(flipper_format_read_uint32(ff, "Dur", &v, 1) && v >= 3 && v <= 120)
-                app->question_dur = v;
             flipper_format_rewind(ff);
             if(flipper_format_read_uint32(ff, "Sound", &v, 1)) app->sound_on = (v != 0);
             flipper_format_rewind(ff);
@@ -61,10 +54,6 @@ void ha_storage_save_config(HotspotArcadeApp* app) {
     if(flipper_format_file_open_always(ff, HA_CONFIG_PATH)) {
         flipper_format_write_header_cstr(ff, "Hotspot Arcade Config", 1);
         flipper_format_write_string_cstr(ff, "SSID", furi_string_get_cstr(app->ssid));
-        flipper_format_write_string_cstr(
-            ff, "TriviaPack", furi_string_get_cstr(app->trivia_pack_path));
-        uint32_t dur = app->question_dur;
-        flipper_format_write_uint32(ff, "Dur", &dur, 1);
         uint32_t sound = app->sound_on ? 1 : 0;
         uint32_t vibro = app->vibro_on ? 1 : 0;
         flipper_format_write_uint32(ff, "Sound", &sound, 1);
@@ -142,25 +131,3 @@ bool ha_storage_load_manifest(HotspotArcadeApp* app) {
     return app->asset_count > 0;
 }
 
-bool ha_storage_load_trivia(HotspotArcadeApp* app) {
-    app->trivia_count = 0;
-    app->trivia_idx = 0;
-    if(furi_string_empty(app->trivia_pack_path)) return false;
-    if(!ha_storage_read_file(
-           furi_string_get_cstr(app->trivia_pack_path), app->trivia_pack, 16384))
-        return false;
-    // Count question blocks: lines beginning with "Q:" (after optional spaces).
-    const char* s = furi_string_get_cstr(app->trivia_pack);
-    int count = 0;
-    bool line_start = true;
-    for(const char* p = s; *p; p++) {
-        if(line_start) {
-            const char* q = p;
-            while(*q == ' ' || *q == '\t') q++;
-            if(q[0] == 'Q' && q[1] == ':') count++;
-        }
-        line_start = (*p == '\n');
-    }
-    app->trivia_count = count;
-    return count > 0;
-}

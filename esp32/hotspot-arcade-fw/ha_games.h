@@ -23,6 +23,12 @@
 #define DOTS_VEDGES (DOTS_H * (DOTS_W + 1)) // vertical edges
 #define DOTS_BOXES (DOTS_W * DOTS_H)
 
+#define TRIVIA_MAX_TOPICS 6
+#define TRIVIA_MAX_QS 20
+#define TRIVIA_QDUR 20 // seconds per question (safety timer)
+#define TRIVIA_COUNTDOWN 5 // seconds after all-ready before the first question
+#define TRIVIA_REVEAL_MS 4000 // pause on the reveal before the next question
+
 #define DRAW_SECS 70 // per drawing round
 #define DRAW_REVEAL_MS 4000 // reveal pause before the next round
 #define PONG_MAX 4 // concurrent pong matches
@@ -45,17 +51,33 @@ struct Player {
     int32_t score;
 };
 
-struct Trivia {
-    uint8_t phase; // 0 idle, 1 question, 2 reveal
-    int qi;
+// Trivia content, streamed from the Flipper at session start (the packs become
+// the votable topics), then owned by the ESP which orchestrates the whole game.
+struct TriviaQ {
     String q;
-    String opts[4];
-    int correct;
-    int dur; // seconds
-    uint32_t deadline; // millis
-    int8_t answer[HA_MAX_PLAYERS + 1]; // per-pid choice, -1 none
+    String o[4];
+    uint8_t correct;
+};
+struct TriviaTopic {
+    String name;
+    TriviaQ qs[TRIVIA_MAX_QS];
+    uint8_t qcount;
+};
+
+struct Trivia {
+    uint8_t phase; // 0 lobby, 1 countdown, 2 question, 3 reveal, 4 final
+    bool ready[HA_MAX_PLAYERS + 1];
+    int8_t vote[HA_MAX_PLAYERS + 1]; // topic index, -1 = none
+    uint32_t countdownEnd;
+    int lastSec; // last countdown second broadcast
+    uint8_t topic; // chosen topic index
+    int qi; // current question index
+    int8_t answer[HA_MAX_PLAYERS + 1];
     uint32_t answerMs[HA_MAX_PLAYERS + 1];
+    int gained[HA_MAX_PLAYERS + 1]; // points earned on the current question
     int counts[4];
+    uint32_t deadline; // question end
+    uint32_t revealUntil;
 };
 
 struct DuelMatch {
@@ -128,6 +150,7 @@ public:
         anyOnLeave(pid); // forfeit any active match
         _p[pid] = Player{};
         haUartLeave(pid);
+        triviaOnRosterChange();
         pushAll();
     }
 
@@ -147,6 +170,7 @@ public:
         String w = String("{\"t\":\"welcome\",\"pid\":") + pid + ",\"nick\":\"" +
                    ha_json_escape(_p[pid].nick) + "\"}";
         haWsSendWs(wsId, w);
+        triviaOnRosterChange();
         pushAll();
     }
 
@@ -166,49 +190,31 @@ public:
         pushAll();
     }
 
-    void onQuestion(const char* json) {
-        if(_active != HA_GAME_TRIVIA) _active = HA_GAME_TRIVIA;
-        Trivia& t = _t;
-        int v;
-        char buf[256];
-        t.qi = ha_json_int(json, "i", &v) ? v : (t.qi + 1);
-        if(ha_json_str(json, "q", buf, sizeof(buf))) t.q = buf;
-        for(int k = 0; k < 4; k++) t.opts[k] = "";
-        // options array "o":["a","b","c","d"] — pull each quoted item in order
-        parseOptions(json, t.opts);
-        t.correct = ha_json_int(json, "c", &v) ? v : 0;
-        t.dur = ha_json_int(json, "dur", &v) ? v : 20;
-        if(t.dur < 3) t.dur = 3;
-        t.phase = 1;
-        t.deadline = millis() + (uint32_t)t.dur * 1000;
-        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
-            t.answer[i] = -1;
-            t.answerMs[i] = 0;
-        }
-        for(int k = 0; k < 4; k++) t.counts[k] = 0;
-        pushAll();
-        emitTriviaEvent(0);
+    // ---- trivia content streamed from the Flipper (packs -> votable topics) ----
+    void triviaTopicsClear() {
+        for(int i = 0; i < TRIVIA_MAX_TOPICS; i++) _topics[i] = TriviaTopic{};
+        _topicCount = 0;
     }
-
-    void reveal() {
-        if(_active != HA_GAME_TRIVIA || _t.phase != 1) return;
-        _t.phase = 2;
-        String correctList = "[";
-        bool first = true;
-        for(uint8_t pid = 1; pid <= HA_MAX_PLAYERS; pid++) {
-            if(!_p[pid].used || _t.answer[pid] < 0) continue;
-            if(_t.answer[pid] == _t.correct) {
-                int pts = triviaPoints(_t.answerMs[pid]);
-                _p[pid].score += pts;
-                haUartScore(pid, pts, "trivia");
-                if(!first) correctList += ",";
-                correctList += pid;
-                first = false;
-            }
-        }
-        correctList += "]";
-        haUartRoundResult(String("{\"correct\":") + correctList + "}");
-        pushAll();
+    void triviaAddTopic(const char* name) {
+        if(_topicCount >= TRIVIA_MAX_TOPICS) return;
+        _topics[_topicCount] = TriviaTopic{};
+        _topics[_topicCount].name = name;
+        _topics[_topicCount].qcount = 0;
+        _topicCount++;
+    }
+    void triviaAddQ(const char* json) {
+        if(_topicCount == 0) return;
+        TriviaTopic& tp = _topics[_topicCount - 1];
+        if(tp.qcount >= TRIVIA_MAX_QS) return;
+        TriviaQ& q = tp.qs[tp.qcount];
+        char buf[200];
+        q.q = ha_json_str(json, "q", buf, sizeof(buf)) ? buf : "";
+        String opts[4];
+        parseOptions(json, opts);
+        for(int k = 0; k < 4; k++) q.o[k] = opts[k];
+        int v;
+        q.correct = ha_json_int(json, "c", &v) ? (uint8_t)v : 0;
+        tp.qcount++;
     }
 
     void roundEnd() {
@@ -223,9 +229,11 @@ public:
         pushAll();
     }
 
-    // Time-based updates (drawing round timers, pong physics). Called from loop().
+    // Time-based updates (trivia phases, drawing timers, pong physics). From loop().
     void tick(uint32_t now) {
-        if(_active == HA_GAME_DRAW)
+        if(_active == HA_GAME_TRIVIA)
+            triviaTick(now);
+        else if(_active == HA_GAME_DRAW)
             drawTick(now);
         else if(_active == HA_GAME_PONG && (now - _lastPong) >= PONG_TICK_MS) {
             _lastPong = now;
@@ -252,6 +260,13 @@ public:
         int v;
         if(strcmp(type, "answer") == 0 && ha_json_int(json, "c", &v)) {
             triviaAnswer(pid, v);
+        } else if(strcmp(type, "ready") == 0) {
+            const char* rp = ha_json_find(json, "ready");
+            triviaReady(pid, rp && strncmp(rp, "true", 4) == 0);
+        } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "topic", &v)) {
+            triviaVote(pid, v);
+        } else if(strcmp(type, "again") == 0) {
+            triviaAgain(pid);
         } else if(strcmp(type, "challenge") == 0 && ha_json_int(json, "to", &v)) {
             matchChallenge(pid, (uint8_t)v);
         } else if(strcmp(type, "accept") == 0 && ha_json_int(json, "from", &v)) {
@@ -281,6 +296,8 @@ private:
     Player _p[HA_MAX_PLAYERS + 1] = {};
     uint8_t _active = HA_GAME_NONE;
     Trivia _t = {};
+    TriviaTopic _topics[TRIVIA_MAX_TOPICS] = {};
+    uint8_t _topicCount = 0;
     DuelMatch _m[DUEL_MAX_MATCHES] = {};
     DuelChallenge _c[DUEL_MAX_CHALLENGES] = {};
     DrawState _d = {};
@@ -363,20 +380,7 @@ private:
         return g == HA_GAME_CONNECT4 || g == HA_GAME_TICTACTOE || g == HA_GAME_DOTS;
     }
 
-    // ---------- trivia ----------
-    void triviaClear() {
-        _t.phase = 0;
-        _t.q = "";
-        for(int k = 0; k < 4; k++) {
-            _t.opts[k] = "";
-            _t.counts[k] = 0;
-        }
-        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
-            _t.answer[i] = -1;
-            _t.answerMs[i] = 0;
-        }
-    }
-
+    // ---------- trivia (phone-driven, self-organizing) ----------
     // Pull the four strings of "o":[...] in order into opts[4].
     static void parseOptions(const char* json, String opts[4]) {
         const char* q = ha_json_find(json, "o");
@@ -401,10 +405,114 @@ private:
         }
     }
 
+    void triviaClear() {
+        _t.phase = 0; // lobby
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _t.ready[i] = false;
+            _t.vote[i] = -1;
+            _t.answer[i] = -1;
+            _t.answerMs[i] = 0;
+            _t.gained[i] = 0;
+        }
+        for(int k = 0; k < 4; k++) _t.counts[k] = 0;
+        _t.qi = 0;
+        _t.topic = 0;
+        _t.lastSec = -1;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used) _p[i].score = 0;
+    }
+
+    bool triviaAllReady() {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used) continue;
+            n++;
+            if(!_t.ready[i]) return false;
+        }
+        return n >= 1;
+    }
+
+    bool triviaAllAnswered() {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used) continue;
+            n++;
+            if(_t.answer[i] < 0) return false;
+        }
+        return n >= 1;
+    }
+
+    void triviaCheckStart() {
+        if(_active != HA_GAME_TRIVIA) return;
+        if(_t.phase == 0 && _topicCount > 0 && triviaAllReady()) {
+            _t.phase = 1; // all ready -> countdown
+            _t.countdownEnd = millis() + (uint32_t)TRIVIA_COUNTDOWN * 1000;
+            _t.lastSec = -1;
+        } else if(_t.phase == 1 && !triviaAllReady()) {
+            _t.phase = 0; // someone unreadied / a new player joined -> cancel
+        }
+    }
+
+    void triviaOnRosterChange() {
+        if(_active != HA_GAME_TRIVIA) return;
+        triviaCheckStart();
+        if(_t.phase == 2 && triviaAllAnswered()) triviaDoReveal();
+    }
+
+    void triviaReady(uint8_t pid, bool r) {
+        if(_active != HA_GAME_TRIVIA || (_t.phase != 0 && _t.phase != 1)) return;
+        _t.ready[pid] = r;
+        triviaCheckStart();
+        pushAll();
+    }
+
+    void triviaVote(uint8_t pid, int topic) {
+        if(_active != HA_GAME_TRIVIA || _t.phase != 0) return;
+        if(topic < 0 || topic >= _topicCount) return;
+        _t.vote[pid] = (int8_t)topic;
+        pushAll();
+    }
+
+    int triviaWinningTopic() {
+        int votes[TRIVIA_MAX_TOPICS] = {0};
+        int total = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _t.vote[i] >= 0 && _t.vote[i] < _topicCount) {
+                votes[_t.vote[i]]++;
+                total++;
+            }
+        if(total == 0) return (int)random(_topicCount);
+        int best = 0;
+        for(int i = 1; i < _topicCount; i++)
+            if(votes[i] > votes[best]) best = i;
+        int tie[TRIVIA_MAX_TOPICS], tn = 0;
+        for(int i = 0; i < _topicCount; i++)
+            if(votes[i] == votes[best]) tie[tn++] = i;
+        return tie[(int)random(tn)];
+    }
+
+    void triviaStartQuestion() {
+        _t.phase = 2;
+        _t.deadline = millis() + (uint32_t)TRIVIA_QDUR * 1000;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _t.answer[i] = -1;
+            _t.answerMs[i] = 0;
+            _t.gained[i] = 0;
+        }
+        for(int k = 0; k < 4; k++) _t.counts[k] = 0;
+        pushAll();
+    }
+
+    void triviaBeginGame() {
+        _t.topic = (uint8_t)triviaWinningTopic();
+        _t.qi = 0;
+        triviaStartQuestion();
+    }
+
     int triviaPoints(uint32_t answeredAt) {
-        uint32_t start = _t.deadline - (uint32_t)_t.dur * 1000;
+        uint32_t start = _t.deadline - (uint32_t)TRIVIA_QDUR * 1000;
         long elapsed = (long)answeredAt - (long)start;
-        long total = (long)_t.dur * 1000;
+        long total = (long)TRIVIA_QDUR * 1000;
         if(elapsed < 0) elapsed = 0;
         if(elapsed > total) elapsed = total;
         int bonus = (int)(500L * (total - elapsed) / (total ? total : 1));
@@ -412,61 +520,183 @@ private:
     }
 
     void triviaAnswer(uint8_t pid, int c) {
-        if(_active != HA_GAME_TRIVIA || _t.phase != 1) return;
-        if(c < 0 || c > 3) return;
-        if(millis() > _t.deadline) return;
-        if(_t.answer[pid] >= 0) return; // already answered
+        if(_active != HA_GAME_TRIVIA || _t.phase != 2) return;
+        if(c < 0 || c > 3 || _t.answer[pid] >= 0 || millis() > _t.deadline) return;
         _t.answer[pid] = (int8_t)c;
         _t.answerMs[pid] = millis();
         _t.counts[c]++;
-        int answered = 0;
-        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
-            if(_p[i].used && _t.answer[i] >= 0) answered++;
-        emitTriviaEvent(answered);
+        if(triviaAllAnswered())
+            triviaDoReveal();
+        else
+            pushAll();
+    }
+
+    void triviaDoReveal() {
+        _t.phase = 3;
+        uint8_t correct = _topics[_t.topic].qs[_t.qi].correct;
+        for(uint8_t pid = 1; pid <= HA_MAX_PLAYERS; pid++) {
+            if(!_p[pid].used || _t.answer[pid] < 0) continue;
+            if(_t.answer[pid] == correct) {
+                int pts = triviaPoints(_t.answerMs[pid]);
+                _p[pid].score += pts;
+                _t.gained[pid] = pts;
+                haUartScore(pid, pts, "trivia");
+            }
+        }
+        _t.revealUntil = millis() + TRIVIA_REVEAL_MS;
         pushAll();
     }
 
-    // Host-facing live tally: answered/total plus per-option counts (for bars).
-    void emitTriviaEvent(int answered) {
-        String ev = String("{\"answers\":") + answered + ",\"total\":" + connectedCount() +
-                    ",\"counts\":[" + _t.counts[0] + "," + _t.counts[1] + "," + _t.counts[2] + "," +
-                    _t.counts[3] + "]}";
-        haUartEvent(ev);
+    void triviaNext() {
+        _t.qi++;
+        if(_t.qi >= _topics[_t.topic].qcount) {
+            _t.phase = 4; // final
+            haUartRoundResult("{\"trivia\":\"final\"}");
+            pushAll();
+        } else {
+            triviaStartQuestion();
+        }
+    }
+
+    void triviaAgain(uint8_t pid) {
+        (void)pid;
+        if(_active != HA_GAME_TRIVIA || _t.phase != 4) return;
+        triviaClear(); // back to the lobby (scores reset)
+        pushAll();
+    }
+
+    void triviaTick(uint32_t now) {
+        if(_t.phase == 1) { // countdown
+            if(now >= _t.countdownEnd) {
+                triviaBeginGame();
+                return;
+            }
+            int secs = (int)((_t.countdownEnd - now + 999) / 1000);
+            if(secs != _t.lastSec) {
+                _t.lastSec = secs;
+                pushAll(); // client shows the new second + plays a tick
+            }
+        } else if(_t.phase == 2) { // question
+            if(now > _t.deadline) triviaDoReveal();
+        } else if(_t.phase == 3) { // reveal
+            if(now > _t.revealUntil) triviaNext();
+        }
+    }
+
+    // Leaderboard: connected players sorted by score desc.
+    String triviaBoard() {
+        uint8_t order[HA_MAX_PLAYERS];
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used) order[n++] = i;
+        for(int a = 0; a < n; a++)
+            for(int b = a + 1; b < n; b++)
+                if(_p[order[b]].score > _p[order[a]].score) {
+                    uint8_t t = order[a];
+                    order[a] = order[b];
+                    order[b] = t;
+                }
+        String s = "[";
+        for(int i = 0; i < n; i++) {
+            if(i) s += ",";
+            s += "{\"pid\":";
+            s += order[i];
+            s += ",\"nick\":\"";
+            s += ha_json_escape(_p[order[i]].nick);
+            s += "\",\"score\":";
+            s += _p[order[i]].score;
+            s += "}";
+        }
+        s += "]";
+        return s;
     }
 
     String triviaJson(uint8_t pid) {
-        const char* phase = _t.phase == 1 ? "question" : _t.phase == 2 ? "reveal" : "idle";
-        String s = String("{\"t\":\"trivia\",\"phase\":\"") + phase + "\"";
-        if(_t.phase != 0) {
-            s += ",\"i\":";
-            s += _t.qi;
-            s += ",\"q\":\"";
-            s += ha_json_escape(_t.q.c_str());
-            s += "\",\"o\":[";
-            for(int k = 0; k < 4; k++) {
-                if(k) s += ",";
-                s += "\"";
-                s += ha_json_escape(_t.opts[k].c_str());
-                s += "\"";
+        if(_t.phase == 0) { // lobby: ready + topic vote
+            String s = "{\"t\":\"trivia\",\"phase\":\"lobby\",\"players\":[";
+            bool first = true;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used) continue;
+                if(!first) s += ",";
+                first = false;
+                s += "{\"pid\":";
+                s += i;
+                s += ",\"nick\":\"";
+                s += ha_json_escape(_p[i].nick);
+                s += "\",\"ready\":";
+                s += _t.ready[i] ? "true" : "false";
+                s += "}";
             }
-            s += "],\"dur\":";
-            s += _t.dur;
+            s += "],\"topics\":[";
+            int votes[TRIVIA_MAX_TOPICS] = {0};
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && _t.vote[i] >= 0 && _t.vote[i] < _topicCount) votes[_t.vote[i]]++;
+            for(int i = 0; i < _topicCount; i++) {
+                if(i) s += ",";
+                s += "{\"name\":\"";
+                s += ha_json_escape(_topics[i].name.c_str());
+                s += "\",\"votes\":";
+                s += votes[i];
+                s += "}";
+            }
+            s += "],\"myvote\":";
+            s += _t.vote[pid];
+            s += ",\"myready\":";
+            s += _t.ready[pid] ? "true" : "false";
+            s += "}";
+            return s;
+        }
+        if(_t.phase == 1) { // countdown
+            uint32_t now = millis();
+            int secs = (now >= _t.countdownEnd) ? 1 : (int)((_t.countdownEnd - now + 999) / 1000);
+            if(secs < 1) secs = 1;
+            return String("{\"t\":\"trivia\",\"phase\":\"countdown\",\"secs\":") + secs +
+                   ",\"topic\":\"" + ha_json_escape(_topics[_t.topic].name.c_str()) + "\"}";
+        }
+        if(_t.phase == 4) { // final
+            return String("{\"t\":\"trivia\",\"phase\":\"final\",\"board\":") + triviaBoard() + "}";
+        }
+        // question / reveal
+        TriviaTopic& tp = _topics[_t.topic];
+        TriviaQ& q = tp.qs[_t.qi];
+        const char* phase = (_t.phase == 3) ? "reveal" : "question";
+        String s = String("{\"t\":\"trivia\",\"phase\":\"") + phase + "\",\"i\":" + _t.qi +
+                   ",\"n\":" + tp.qcount + ",\"q\":\"" + ha_json_escape(q.q.c_str()) + "\",\"o\":[";
+        for(int k = 0; k < 4; k++) {
+            if(k) s += ",";
+            s += "\"";
+            s += ha_json_escape(q.o[k].c_str());
+            s += "\"";
+        }
+        s += "],\"mine\":";
+        s += _t.answer[pid];
+        s += ",\"topic\":\"";
+        s += ha_json_escape(tp.name.c_str());
+        s += "\",\"board\":" + triviaBoard();
+        if(_t.phase == 2) {
+            int answered = 0;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && _t.answer[i] >= 0) answered++;
+            s += ",\"dur\":";
+            s += TRIVIA_QDUR;
             s += ",\"deadline\":";
             s += _t.deadline;
-            s += ",\"mine\":";
-            s += _t.answer[pid];
+            s += ",\"answered\":";
+            s += answered;
+            s += ",\"total\":";
+            s += connectedCount();
+        } else { // reveal
+            s += ",\"correct\":";
+            s += q.correct;
             s += ",\"counts\":[";
             for(int k = 0; k < 4; k++) {
                 if(k) s += ",";
                 s += _t.counts[k];
             }
-            s += "]";
-            if(_t.phase == 2) {
-                s += ",\"correct\":";
-                s += _t.correct;
-            }
+            s += "],\"gained\":";
+            s += _t.gained[pid];
         }
-        s += ",\"scores\":" + playersJson() + "}";
+        s += "}";
         return s;
     }
 

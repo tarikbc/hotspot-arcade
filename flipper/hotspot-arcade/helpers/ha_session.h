@@ -19,11 +19,5 @@ void ha_session_stop(HotspotArcadeApp* app);
 void ha_select_game(HotspotArcadeApp* app, uint8_t game);
 void ha_reset_scores(HotspotArcadeApp* app);
 
-// Trivia round orchestration.
-bool ha_trivia_begin(HotspotArcadeApp* app); // load pack, send question 0
-void ha_trivia_reveal(HotspotArcadeApp* app); // close the current question
-bool ha_trivia_next(HotspotArcadeApp* app); // advance; false if the pack ended
-void ha_round_end(HotspotArcadeApp* app); // end the current game round
-
 // Roster helper for the leaderboard.
 int ha_player_count(HotspotArcadeApp* app);

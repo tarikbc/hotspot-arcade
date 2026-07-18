@@ -16,9 +16,6 @@ typedef enum {
     HaEventShowLeaderboard = 106,
     HaEventShowConsole = 107,
     HaEventHostGame = 110, // enter the active game's host screen from the dashboard
-    // Trivia host actions (buttons on the host_trivia widget).
-    HaEventTriviaReveal = 108,
-    HaEventTriviaNext = 109,
     // Flash Firmware (ESP-serial-flasher): start (board detected in download mode),
     // per-block progress, done.
     HaEventFlashStart = 111,

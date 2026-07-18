@@ -262,14 +262,19 @@ static void dispatchFrame() {
             ENGINE_UNLOCK();
         }
         break;
-    case HA_MSG_QUESTION:
+    case HA_MSG_TRIVIA_CLEAR:
         ENGINE_LOCK();
-        engine.onQuestion((const char*)rxBuf);
+        engine.triviaTopicsClear();
         ENGINE_UNLOCK();
         break;
-    case HA_MSG_REVEAL:
+    case HA_MSG_TRIVIA_TOPIC:
         ENGINE_LOCK();
-        engine.reveal();
+        engine.triviaAddTopic((const char*)rxBuf);
+        ENGINE_UNLOCK();
+        break;
+    case HA_MSG_TRIVIA_Q:
+        ENGINE_LOCK();
+        engine.triviaAddQ((const char*)rxBuf);
         ENGINE_UNLOCK();
         break;
     case HA_MSG_ROUND_END:

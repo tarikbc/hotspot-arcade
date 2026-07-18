@@ -31,7 +31,6 @@
 #define HA_HANDSHAKE_TIMEOUT_MS (4000) // no ack progress -> board isn't our firmware
 #define HA_CONSOLE_MAX (3072)
 #define HA_FILE_MAX (60000) // max single web asset streamed to the ESP
-#define HA_DEFAULT_DUR (20) // trivia seconds per question
 
 #define HA_DATA_DIR EXT_PATH("apps_data/hotspot_arcade")
 #define HA_WEB_DIR HA_DATA_DIR "/web"
@@ -96,8 +95,6 @@ typedef struct HotspotArcadeApp {
     // Config (persisted)
     FuriString* ssid;
     char ssid_buf[HA_SSID_MAX];
-    FuriString* trivia_pack_path; // selected pack file on SD
-    uint32_t question_dur; // seconds per trivia question
     bool sound_on;
     bool vibro_on;
 
@@ -110,18 +107,6 @@ typedef struct HotspotArcadeApp {
 
     // Active game (HA_GAME_*)
     uint8_t active_game;
-
-    // Trivia host state
-    FuriString* trivia_pack; // loaded pack file text
-    int trivia_count; // number of questions in the pack
-    int trivia_idx; // current question index
-    uint8_t trivia_phase; // 0 idle, 1 question, 2 reveal
-    int answers_in; // answers received for current question (from EVENT)
-    int answers_total; // players connected (from EVENT)
-    int answer_counts[4]; // per-option tally (from EVENT), for live bars
-    FuriString* cur_q; // current question text
-    FuriString* cur_opts[4];
-    int cur_correct;
 
     // Event feed / console
     FuriString* console; // scrollable raw event log

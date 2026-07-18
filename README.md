@@ -21,9 +21,10 @@ the game to phones, and keeps the real-time game state. See
 
 ## Games
 
-- **Trivia** — Kahoot-style. The host (Flipper) drives questions from a pack on the SD
-  card; phones buzz in A/B/C/D; points for correct and fast; live answer bars and a
-  podium on the Flipper. Scales to the whole group.
+- **Trivia** — Kahoot-style and fully self-organizing. Players ready up and vote a topic
+  in the lobby; an all-ready 5-second countdown starts it; phones buzz in A/B/C/D with
+  points for correct and fast; a collapsible leaderboard rides along and a podium ends
+  it. Topics are the trivia packs on the SD card. Scales to the whole group.
 - **Connect Four**, **Tic-Tac-Toe**, **Dots & Boxes** — 1v1 duels: players challenge
   each other from their phones, many matches run at once, and there is a rematch button.
   Wins score on the Flipper leaderboard.
@@ -40,14 +41,22 @@ is mostly a new module on each side.
 the landing and lobby, a trivia question and its reveal, and every game (Connect Four,
 Tic-Tac-Toe, Dots & Boxes, Draw & Guess, and Pong):
 
+Trivia is self-organizing: players ready up and vote a topic in the lobby, then it runs
+itself (countdown, questions, a collapsible leaderboard, a final podium):
+
 <p align="center">
+  <img src="docs/img/web-trivia-lobby.png" alt="Trivia lobby: ready up and vote a topic with live tallies" width="19%">
+  <img src="docs/img/web-trivia.png" alt="Trivia question with A/B/C/D tiles and a collapsible leaderboard" width="19%">
+  <img src="docs/img/web-trivia-reveal.png" alt="Trivia reveal: correct answer, per-option counts, live leaderboard" width="19%">
+  <img src="docs/img/web-trivia-final.png" alt="Trivia final podium" width="19%">
   <img src="docs/img/web-landing.png" alt="Landing screen: nickname entry and Play" width="19%">
-  <img src="docs/img/web-lobby.png" alt="Lobby: live player list with scores" width="19%">
-  <img src="docs/img/web-trivia.png" alt="Trivia: question with A/B/C/D tiles and countdown bar" width="19%">
-  <img src="docs/img/web-trivia-reveal.png" alt="Trivia reveal: correct answer and per-option counts" width="19%">
-  <img src="docs/img/web-connect4.png" alt="Connect Four: 7x6 board mid-game, your turn" width="19%">
 </p>
+
+The rest of the games, all phone-driven (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes,
+Drawing, and real-time Pong):
+
 <p align="center">
+  <img src="docs/img/web-connect4.png" alt="Connect Four: 7x6 board mid-game, your turn" width="19%">
   <img src="docs/img/web-ttt.png" alt="Tic-Tac-Toe: 3x3 duel, your turn" width="19%">
   <img src="docs/img/web-dots.png" alt="Dots &amp; Boxes: claimed boxes and live score" width="19%">
   <img src="docs/img/web-draw.png" alt="Draw &amp; Guess: shared canvas with a live guess chat" width="19%">
@@ -128,12 +137,12 @@ into the new firmware. (The firmware ships via `fap_file_assets`, extracted to
 
 On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
 
-1. **Set SSID** and pick a **Trivia** pack (optional, only needed for trivia).
+1. **Set the SSID** (optional). Trivia packs are picked up automatically from the SD card.
 2. **Start Session** — the ESP brings up the AP; the dashboard shows **Broadcasting**.
 3. People **join the WiFi** and open `192.168.4.1`, pick a nickname, and land in the lobby.
-4. **Games** → pick a game. For **Trivia**, press **Start** on the dashboard to drive
-   questions (Reveal / Next). The duels (Connect Four / Tic-Tac-Toe / Dots & Boxes),
-   **Drawing**, and **Pong** are player-driven; the dashboard **Feed** watches events.
+4. **Games** → pick a game. Everything is player-driven from the phones: Trivia self-runs
+   (ready up, vote a topic, play); the duels (Connect Four / Tic-Tac-Toe / Dots & Boxes),
+   **Drawing**, and **Pong** organize themselves too. The dashboard **Feed** watches events.
 5. **Leaderboard** shows live scores; **Console** shows the raw event log.
 
 ## Trivia packs

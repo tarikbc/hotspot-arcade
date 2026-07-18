@@ -77,72 +77,15 @@ static void roster_clear(HotspotArcadeApp* app) {
     for(int i = 0; i < HA_MAX_PLAYERS; i++) app->players[i].used = false;
 }
 
-// ---------------- trivia pack parsing ----------------
+// ---------------- trivia pack streaming ----------------
+// The Flipper no longer hosts trivia; it just streams every pack on the SD card to
+// the ESP as votable topics at session start, and the ESP orchestrates the game.
 
-// Trim leading/trailing spaces and CR from a line slice into out.
 static void copy_trim(const char* start, const char* end, FuriString* out) {
     while(start < end && (*start == ' ' || *start == '\t')) start++;
     while(end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r')) end--;
     furi_string_set(out, "");
     for(const char* p = start; p < end; p++) furi_string_push_back(out, *p);
-}
-
-// Load the idx-th question block from the loaded pack into cur_q / cur_opts /
-// cur_correct. Returns true on a complete question (4 options + valid answer).
-static bool trivia_load_question(HotspotArcadeApp* app, int idx) {
-    const char* s = furi_string_get_cstr(app->trivia_pack);
-    furi_string_set(app->cur_q, "");
-    for(int k = 0; k < 4; k++) furi_string_set(app->cur_opts[k], "");
-    app->cur_correct = 0;
-
-    int block = -1;
-    bool capturing = false;
-    int got_opts = 0;
-    bool got_answer = false;
-    FuriString* tmp = furi_string_alloc();
-
-    const char* line = s;
-    while(*line) {
-        const char* eol = line;
-        while(*eol && *eol != '\n') eol++;
-        // skip leading spaces for the tag check
-        const char* t = line;
-        while(t < eol && (*t == ' ' || *t == '\t')) t++;
-
-        if(t[0] == 'Q' && t[1] == ':') {
-            block++;
-            if(capturing) break; // reached the next question
-            if(block == idx) {
-                capturing = true;
-                copy_trim(t + 2, eol, app->cur_q);
-                got_opts = 0;
-                got_answer = false;
-            }
-        } else if(capturing) {
-            if((t[0] == 'A' || t[0] == 'B' || t[0] == 'C' || t[0] == 'D') && t[1] == ':') {
-                int k = t[0] - 'A';
-                if(k >= 0 && k < 4) {
-                    copy_trim(t + 2, eol, app->cur_opts[k]);
-                    got_opts++;
-                }
-            } else if(strncmp(t, "Answer:", 7) == 0) {
-                copy_trim(t + 7, eol, tmp);
-                char c = furi_string_size(tmp) ? furi_string_get_char(tmp, 0) : 'A';
-                if(c >= 'a') c = c - 'a' + 'A';
-                if(c >= 'A' && c <= 'D') {
-                    app->cur_correct = c - 'A';
-                    got_answer = true;
-                }
-            } else if(t[0] == '-' && t[1] == '-') {
-                break; // explicit block separator
-            }
-        }
-
-        line = (*eol == '\n') ? eol + 1 : eol;
-    }
-
-    furi_string_free(tmp);
-    return capturing && got_opts >= 4 && got_answer;
 }
 
 static void json_escape_cat(FuriString* out, const char* s) {
@@ -159,63 +102,132 @@ static void json_escape_cat(FuriString* out, const char* s) {
     }
 }
 
-static void trivia_send_current(HotspotArcadeApp* app) {
+// Send one parsed question to the ESP as TRIVIA_Q {q,o[4],c}.
+static void trivia_send_q(HotspotArcadeApp* app, FuriString* q, FuriString* o[4], int correct) {
     FuriString* j = furi_string_alloc();
-    furi_string_printf(j, "{\"i\":%d,\"q\":\"", app->trivia_idx);
-    json_escape_cat(j, furi_string_get_cstr(app->cur_q));
+    furi_string_set(j, "{\"q\":\"");
+    json_escape_cat(j, furi_string_get_cstr(q));
     furi_string_cat_str(j, "\",\"o\":[");
     for(int k = 0; k < 4; k++) {
         if(k) furi_string_cat_str(j, ",");
         furi_string_cat_str(j, "\"");
-        json_escape_cat(j, furi_string_get_cstr(app->cur_opts[k]));
+        json_escape_cat(j, furi_string_get_cstr(o[k]));
         furi_string_cat_str(j, "\"");
     }
-    furi_string_cat_printf(
-        j, "],\"c\":%d,\"dur\":%lu}", app->cur_correct, (unsigned long)app->question_dur);
+    furi_string_cat_printf(j, "],\"c\":%d}", correct);
     ha_proto_send(
-        app->uart, HA_MSG_QUESTION, (const uint8_t*)furi_string_get_cstr(j), furi_string_size(j));
+        app->uart, HA_MSG_TRIVIA_Q, (const uint8_t*)furi_string_get_cstr(j), furi_string_size(j));
     furi_string_free(j);
-    app->trivia_phase = 1;
-    app->answers_in = 0;
-    for(int k = 0; k < 4; k++) app->answer_counts[k] = 0;
+    furi_delay_ms(2); // let the ESP drain its RX between messages
 }
 
-bool ha_trivia_begin(HotspotArcadeApp* app) {
-    if(!ha_storage_load_trivia(app)) return false;
-    app->trivia_idx = 0;
-    if(!trivia_load_question(app, 0)) return false;
-    trivia_send_current(app);
-    return true;
-}
+// Parse a pack file's text and stream it as a topic + its questions.
+static void trivia_stream_pack(HotspotArcadeApp* app, const char* content, const char* fallback) {
+    FuriString* name = furi_string_alloc();
+    FuriString* q = furi_string_alloc();
+    FuriString* o[4];
+    for(int k = 0; k < 4; k++) o[k] = furi_string_alloc();
+    FuriString* tmp = furi_string_alloc();
+    int correct = 0, gotOpts = 0;
+    bool inQ = false, gotAns = false;
 
-void ha_trivia_reveal(HotspotArcadeApp* app) {
-    if(app->trivia_phase != 1) return;
-    ha_proto_send(app->uart, HA_MSG_REVEAL, NULL, 0);
-    app->trivia_phase = 2;
-}
-
-bool ha_trivia_next(HotspotArcadeApp* app) {
-    int next = app->trivia_idx + 1;
-    if(next >= app->trivia_count || !trivia_load_question(app, next)) {
-        ha_round_end(app);
-        return false;
+    // topic name = the "Pack:" line if present, else the filename
+    const char* line = content;
+    while(*line) {
+        const char* eol = line;
+        while(*eol && *eol != '\n') eol++;
+        const char* t = line;
+        while(t < eol && (*t == ' ' || *t == '\t')) t++;
+        if(strncmp(t, "Pack:", 5) == 0) {
+            copy_trim(t + 5, eol, name);
+            break;
+        }
+        line = (*eol == '\n') ? eol + 1 : eol;
     }
-    app->trivia_idx = next;
-    trivia_send_current(app);
-    return true;
+    if(furi_string_empty(name)) furi_string_set(name, fallback);
+    ha_proto_send_str(app->uart, HA_MSG_TRIVIA_TOPIC, furi_string_get_cstr(name));
+    furi_delay_ms(2);
+
+    // stream each question block
+    line = content;
+    while(*line) {
+        const char* eol = line;
+        while(*eol && *eol != '\n') eol++;
+        const char* t = line;
+        while(t < eol && (*t == ' ' || *t == '\t')) t++;
+
+        if(t[0] == 'Q' && t[1] == ':') {
+            if(inQ && gotOpts >= 4 && gotAns) trivia_send_q(app, q, o, correct);
+            inQ = true;
+            gotOpts = 0;
+            gotAns = false;
+            correct = 0;
+            copy_trim(t + 2, eol, q);
+            for(int k = 0; k < 4; k++) furi_string_set(o[k], "");
+        } else if(inQ) {
+            if((t[0] >= 'A' && t[0] <= 'D') && t[1] == ':') {
+                copy_trim(t + 2, eol, o[t[0] - 'A']);
+                gotOpts++;
+            } else if(strncmp(t, "Answer:", 7) == 0) {
+                copy_trim(t + 7, eol, tmp);
+                char c = furi_string_size(tmp) ? furi_string_get_char(tmp, 0) : 'A';
+                if(c >= 'a') c = c - 'a' + 'A';
+                if(c >= 'A' && c <= 'D') {
+                    correct = c - 'A';
+                    gotAns = true;
+                }
+            }
+        }
+        line = (*eol == '\n') ? eol + 1 : eol;
+    }
+    if(inQ && gotOpts >= 4 && gotAns) trivia_send_q(app, q, o, correct);
+
+    furi_string_free(name);
+    furi_string_free(q);
+    for(int k = 0; k < 4; k++) furi_string_free(o[k]);
+    furi_string_free(tmp);
 }
 
-void ha_round_end(HotspotArcadeApp* app) {
-    ha_proto_send(app->uart, HA_MSG_ROUND_END, NULL, 0);
-    app->trivia_phase = 0;
+// Stream every .txt pack in the trivia dir to the ESP as votable topics.
+static void ha_trivia_stream_packs(HotspotArcadeApp* app) {
+    ha_proto_send(app->uart, HA_MSG_TRIVIA_CLEAR, NULL, 0);
+    furi_delay_ms(2);
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* dir = storage_file_alloc(storage);
+    if(storage_dir_open(dir, HA_TRIVIA_DIR)) {
+        FileInfo info;
+        char name[80];
+        int topics = 0;
+        while(topics < 6 && storage_dir_read(dir, &info, name, sizeof(name))) {
+            if(info.flags & FSF_DIRECTORY) continue;
+            size_t nl = strlen(name);
+            const char* e = name + (nl >= 4 ? nl - 4 : 0);
+            if(nl < 5 || e[0] != '.' || (e[1] | 32) != 't' || (e[2] | 32) != 'x' ||
+               (e[3] | 32) != 't')
+                continue;
+            FuriString* path = furi_string_alloc();
+            furi_string_printf(path, "%s/%s", HA_TRIVIA_DIR, name);
+            FuriString* content = furi_string_alloc();
+            if(ha_storage_read_file(furi_string_get_cstr(path), content, 16384)) {
+                FuriString* fb = furi_string_alloc_set_str(name);
+                furi_string_left(fb, nl - 4); // drop ".txt"
+                trivia_stream_pack(app, furi_string_get_cstr(content), furi_string_get_cstr(fb));
+                furi_string_free(fb);
+                topics++;
+            }
+            furi_string_free(content);
+            furi_string_free(path);
+        }
+    }
+    storage_dir_close(dir);
+    storage_file_free(dir);
+    furi_record_close(RECORD_STORAGE);
 }
 
 // ---------------- game selection ----------------
 
 void ha_select_game(HotspotArcadeApp* app, uint8_t game) {
     app->active_game = game;
-    app->trivia_phase = 0;
-    app->trivia_idx = 0;
     uint8_t g = game;
     ha_proto_send(app->uart, HA_MSG_SELECT_GAME, &g, 1);
 }
@@ -239,7 +251,9 @@ static void send_config(HotspotArcadeApp* app) {
 // Stream file asset[file_idx], or advance to SET_AP when all files are sent.
 static void send_next_file(HotspotArcadeApp* app) {
     if(app->file_idx >= app->asset_count) {
-        // All files streamed: name the AP, then start.
+        // All files streamed: stream the trivia packs (as votable topics), then
+        // name the AP and start.
+        ha_trivia_stream_packs(app);
         ha_proto_send_str(app->uart, HA_MSG_SET_AP, furi_string_get_cstr(app->ssid));
         app->hs = HaHsSetAp;
         return;
@@ -285,9 +299,6 @@ static void start_handshake(HotspotArcadeApp* app) {
     app->last_handshake_tick = furi_get_tick();
     roster_clear(app);
     app->portal_running = false; // show progress, not "Broadcasting", while (re)streaming
-    app->trivia_phase = 0;
-    app->answers_in = 0;
-    app->answers_total = 0;
     app->file_idx = 0;
     ha_storage_load_manifest(app);
     furi_string_set(app->status, "starting");
@@ -420,28 +431,13 @@ static void dispatch_frame(HotspotArcadeApp* app) {
         feedback_success(app); // trivia reveal scored, or a Connect Four win
         break;
     case HA_MSG_EVENT: {
-        int v;
-        if(ha_json_int((const char*)p, "answers", &v)) {
-            app->answers_in = v;
-            if(ha_json_int((const char*)p, "total", &v)) app->answers_total = v;
-            // Parse the counts array "counts":[a,b,c,d] into answer_counts[].
-            const char* cp = strstr((const char*)p, "\"counts\"");
-            if(cp) {
-                cp = strchr(cp, '[');
-                for(int k = 0; k < 4 && cp; k++) {
-                    cp++;
-                    app->answer_counts[k] = (int)strtol(cp, NULL, 10);
-                    cp = strchr(cp, ',');
-                }
-            }
-        } else {
-            char ev[64];
-            if(ha_json_str((const char*)p, "duel", ev, sizeof(ev)) ||
-               ha_json_str((const char*)p, "pong", ev, sizeof(ev)) ||
-               ha_json_str((const char*)p, "draw", ev, sizeof(ev))) {
-                furi_string_set_str(app->last_event, ev);
-                console_add(app, ev);
-            }
+        // Game-specific host-facing status line for the console / duel feed.
+        char ev[64];
+        if(ha_json_str((const char*)p, "duel", ev, sizeof(ev)) ||
+           ha_json_str((const char*)p, "pong", ev, sizeof(ev)) ||
+           ha_json_str((const char*)p, "draw", ev, sizeof(ev))) {
+            furi_string_set_str(app->last_event, ev);
+            console_add(app, ev);
         }
         break;
     }

@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41
 #define HA_FW_MAGIC_2 0x52
 #define HA_FW_MAGIC_3 0x43
-#define HA_FW_VERSION 2 // the version this app requires; older board -> offer update
+#define HA_FW_VERSION 3 // the version this app requires; older board -> offer update
 
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES 0x10
@@ -31,6 +31,9 @@
 #define HA_MSG_ROUND_END 0x19
 #define HA_MSG_CONFIG 0x1A
 #define HA_MSG_RESET_SCORES 0x1B
+#define HA_MSG_TRIVIA_CLEAR 0x1C // drop stored topics (start of pack streaming)
+#define HA_MSG_TRIVIA_TOPIC 0x1D // payload = topic name; creates a topic
+#define HA_MSG_TRIVIA_Q 0x1E // payload = JSON {q,o[4],c}; appends to the last topic
 
 // ESP -> Flipper
 #define HA_MSG_STATUS 0x80

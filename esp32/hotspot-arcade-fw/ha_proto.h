@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41 // 'A'
 #define HA_FW_MAGIC_2 0x52 // 'R'
 #define HA_FW_MAGIC_3 0x43 // 'C'  ("HARC" = Hotspot ARCade)
-#define HA_FW_VERSION 2
+#define HA_FW_VERSION 3 // v3: phone-driven trivia (topics streamed, ESP orchestrates)
 
 // Flipper -> ESP
 enum {
@@ -32,6 +32,9 @@ enum {
     HA_MSG_ROUND_END = 0x19,
     HA_MSG_CONFIG = 0x1A,
     HA_MSG_RESET_SCORES = 0x1B,
+    HA_MSG_TRIVIA_CLEAR = 0x1C, // drop stored topics (start of pack streaming)
+    HA_MSG_TRIVIA_TOPIC = 0x1D, // payload = topic name; creates a topic
+    HA_MSG_TRIVIA_Q = 0x1E, // payload = JSON {q,o[4],c}; appends to the last topic
 };
 
 // ESP -> Flipper

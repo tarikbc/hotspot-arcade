@@ -46,14 +46,53 @@
   <ul id="players" class="players"></ul>
 </section>
 
-<!-- 3. Trivia -->
+<!-- 3. Trivia — fully phone-driven, self-organizing (lobby/countdown/
+     question/reveal/final sub-states, all driven by {t:"trivia"} messages). -->
 <section id="trivia" class="screen hide">
-  <header class="bar"><h2>Trivia</h2><span id="tv-rank" class="me"></span></header>
-  <div id="tv-status" class="game-state hide">Get ready...</div>
-  <div id="tv-bar" class="timebar hide"><i></i></div>
-  <h3 id="tv-q" class="question"></h3>
-  <div id="tv-opts" class="opts"></div>
-  <div id="tv-scores" class="scores"></div>
+
+  <!-- Collapsible leaderboard, pinned at top during question/reveal. -->
+  <div id="tv-lead" class="lead hide">
+    <button id="tv-lead-bar" class="lead-bar" type="button" aria-expanded="false">
+      <span id="tv-lead-sum" class="lead-sum"></span>
+      <span class="lead-hint">Board</span>
+      <span id="tv-lead-caret" class="lead-caret">&#9660;</span>
+    </button>
+    <ol id="tv-lead-full" class="lead-full hide"></ol>
+  </div>
+
+  <!-- Lobby: ready toggle + topic vote -->
+  <div id="tv-lobby" class="hide">
+    <header class="bar"><h2>Trivia</h2><span id="tv-lobby-me" class="me"></span></header>
+    <ul id="tv-players" class="players"></ul>
+    <button id="tv-ready" class="btn big">I'm ready</button>
+    <p class="sub">Vote a topic</p>
+    <div id="tv-topics" class="topics"></div>
+  </div>
+
+  <!-- Countdown -->
+  <div id="tv-count" class="hide count">
+    <div id="tv-count-topic" class="count-topic"></div>
+    <div id="tv-count-num" class="count-num">5</div>
+    <div class="sub">Starting</div>
+  </div>
+
+  <!-- Question / reveal share this block -->
+  <div id="tv-play" class="hide">
+    <div class="bar tv-head">
+      <span id="tv-qmeta" class="me"></span>
+      <span id="tv-answered" class="me"></span>
+    </div>
+    <div id="tv-bar" class="timebar hide"><i></i></div>
+    <h3 id="tv-q" class="question"></h3>
+    <div id="tv-opts" class="opts"></div>
+  </div>
+
+  <!-- Final leaderboard -->
+  <div id="tv-final" class="hide">
+    <header class="bar"><h2>Final</h2></header>
+    <ol id="tv-podium" class="podium"></ol>
+    <button id="tv-again" class="btn big">Play again</button>
+  </div>
 </section>
 
 <!-- 4. Duel (Connect 4 / Tic-Tac-Toe / Dots & Boxes) -->
