@@ -1,7 +1,8 @@
 // Zero-dependency mock of the ESP referee, for eyeballing the client in a real
 // browser. Serves dist/index.html at "/" and speaks just enough of RFC 6455 at
-// "/ws" to drive EVERY game: trivia, the three duels (connect4 / tic-tac-toe /
-// dots & boxes), draw & guess, and pong.
+// "/ws" to drive the core games: trivia, the board duels (connect4 / tic-tac-toe
+// / dots & boxes), draw & guess, and pong (with emoji avatars). The v0.2.0 party
+// games (would-you-rather / scramble / reaction) and reversi run on hardware.
 //
 //   npm run build && npm run mock   ->   open http://localhost:8080
 //
@@ -55,6 +56,7 @@ function frame(socket, obj) {
 function handle(socket) {
   const ME = 1, BOT = 2, CATHY = 3;
   const nicks = { 1: "You", 2: "Botby", 3: "Cathy" };
+  const avatars = { 1: "🙂", 2: "🤖", 3: "🦊" };
   const scores = { 1: 0, 2: 0, 3: 0 };
   let timers = [];
   let loopId = 0;
@@ -62,13 +64,16 @@ function handle(socket) {
   const clearTimers = () => { timers.forEach(clearTimeout); timers = []; if (loopId) { clearInterval(loopId); loopId = 0; } };
 
   const send = (obj) => frame(socket, obj);
-  const players = () => [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], score: scores[p] }));
+  const players = () => [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], avatar: avatars[p], score: scores[p] }));
   const lobby = (game) => send({ t: "lobby", game, players: players(), me: ME });
   const sc = () => players();
 
   // ---- game rotation --------------------------------------------------------
+  // Test knobs: STAGE=<name> jumps the rotation to a game; LOBBY=1 sits in the
+  // app lobby (game "none") so the lobby chat can be exercised on its own.
   const STAGES = ["trivia", "c4", "ttt", "dots", "draw", "pong"];
-  let stage = 0;
+  const START = STAGES.indexOf(process.env.STAGE || "");
+  let stage = START >= 0 ? START : 0;
   const curStage = () => STAGES[stage % STAGES.length];
   function startStage() {
     clearTimers();
@@ -94,7 +99,7 @@ function handle(socket) {
   let tv = null;
 
   function tvBoard() {
-    return [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], score: tv.score[p] }))
+    return [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], avatar: avatars[p], score: tv.score[p] }))
       .sort((a, b) => b.score - a.score);
   }
   function tvTopics() {
@@ -105,7 +110,7 @@ function handle(socket) {
   function sendTvLobby() {
     send({
       t: "trivia", phase: "lobby",
-      players: [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], ready: !!tv.ready[p] })),
+      players: [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], avatar: avatars[p], ready: !!tv.ready[p] })),
       topics: tvTopics(),
       myvote: (ME in tv.votes) ? tv.votes[ME] : -1,
       myready: !!tv.ready[ME],
@@ -336,24 +341,53 @@ function handle(socket) {
   }
 
   // ---- draw & guess ---------------------------------------------------------
-  let drawSecret = "";
+  // Two rounds with a per-round countdown (deadline + dur), then a final board
+  // and `again` restart. Round 1 you draw; round 2 you guess.
+  const DRAW_DUR = 20;   // seconds per round (dur is sent in seconds)
+  let draw = null;
+  function drawScore(p, pts) { scores[p] += pts; }
+  function drawBoard() {
+    return [1, 2, 3].map((p) => ({ pid: p, nick: nicks[p], avatar: avatars[p], score: scores[p] }))
+      .sort((a, b) => b.score - a.score);
+  }
   function runDraw() {
     lobby("draw");
-    // Round 1: you draw (roomy window so a human can actually sketch); a bot
-    // "guesses" correctly after a while.
-    at(300, () => send({ t: "draw", phase: "draw", role: "drawer", word: "BANANA", round: 1, drawer: ME, scores: sc() }));
-    at(20000, () => { scores[CATHY] += 50; send({ t: "draw", phase: "reveal", word: "BANANA", winner: CATHY, round: 1, scores: sc() }); });
-    // Round 2: you guess. Bot draws a scribble; a wrong bot guess populates chat.
-    at(23000, () => {
-      drawSecret = "ROCKET";
-      send({ t: "draw", phase: "draw", role: "guesser", len: drawSecret.length, round: 2, drawer: nicks[BOT], scores: sc() });
+    draw = { round: 1, rounds: 2, secret: "", done: false };
+    at(300, drawRound);
+  }
+  function drawRound() {
+    if (!draw) return;
+    draw.done = false;
+    const deadline = Date.now() + DRAW_DUR * 1000;
+    if (draw.round === 1) {
+      // You draw. A bot "guesses" correctly partway through the window.
+      draw.secret = "BANANA";
+      send({ t: "draw", phase: "draw", role: "drawer", word: draw.secret,
+        round: draw.round, rounds: draw.rounds, drawer: ME, deadline, dur: DRAW_DUR, scores: sc() });
+      at(7000, () => { if (draw && draw.round === 1 && !draw.done) { drawScore(CATHY, 50); drawReveal(CATHY); } });
+    } else {
+      // You guess. The bot scribbles; a wrong bot guess lands in chat.
+      draw.secret = "ROCKET";
+      send({ t: "draw", phase: "draw", role: "guesser", len: draw.secret.length,
+        round: draw.round, rounds: draw.rounds, drawer: nicks[BOT], deadline, dur: DRAW_DUR, scores: sc() });
+      at(600, () => send({ t: "ink", clear: true }));
+      for (let i = 0; i < 8; i++)
+        at(1000 + i * 150, ((k) => () => send({ t: "ink", x0: 0.5, y0: 0.2 + k * 0.06, x1: 0.5, y1: 0.26 + k * 0.06 }))(i));
+      at(2500, () => send({ t: "chat", nick: nicks[CATHY], text: "banana?" }));
+      // Fallback so the harness never stalls if you never guess.
+      at(DRAW_DUR * 1000, () => { if (draw && draw.round === 2 && !draw.done) drawReveal(null); });
+    }
+  }
+  function drawReveal(winner) {
+    if (!draw) return;
+    draw.done = true;
+    send({ t: "draw", phase: "reveal", word: draw.secret, winner,
+      round: draw.round, rounds: draw.rounds, scores: sc() });
+    at(3000, () => {
+      if (!draw) return;
+      if (draw.round >= draw.rounds) { send({ t: "draw", phase: "final", board: drawBoard() }); }
+      else { draw.round++; drawRound(); }
     });
-    at(23600, () => send({ t: "ink", clear: true }));
-    for (let i = 0; i < 8; i++)
-      at(24000 + i * 150, ((k) => () => send({ t: "ink", x0: 0.5, y0: 0.2 + k * 0.06, x1: 0.5, y1: 0.26 + k * 0.06 }))(i));
-    at(26000, () => send({ t: "chat", nick: nicks[CATHY], text: "banana?" }));
-    // Fallback: if nobody guesses, reveal and advance so the harness never stalls.
-    at(80000, () => { if (curStage() === "draw") { send({ t: "draw", phase: "reveal", word: drawSecret, winner: null, round: 2, scores: sc() }); at(3000, nextStage); } });
   }
 
   // ---- pong -----------------------------------------------------------------
@@ -417,11 +451,24 @@ function handle(socket) {
       nicks[ME] = m.nick || "You";
       send({ t: "welcome", pid: ME, nick: nicks[ME] });
       lobby("none");
-      at(1000, startStage);
+      if (process.env.LOBBY) {
+        // Sit in the app lobby so lobby chat can be tested; a couple of bots
+        // say hi. No game auto-starts in this mode.
+        at(700, () => send({ t: "chat", nick: nicks[CATHY], text: "hey, ready to play?" }));
+        at(1600, () => send({ t: "chat", nick: nicks[BOT], text: "lets go!" }));
+      } else {
+        at(1000, startStage);
+      }
       return;
     }
     if (m.t === "ping") { send({ t: "pong" }); return; }
     if (m.t === "leaveGame") { nextStage(); return; }
+    // Lobby chat: broadcast the sender's line back (mock has one real client).
+    if (m.t === "say" && typeof m.text === "string") {
+      const text = m.text.trim().slice(0, 100);
+      if (text) send({ t: "chat", nick: nicks[ME], text });
+      return;
+    }
 
     if (cur === "trivia") {
       if (!tv) return;
@@ -448,13 +495,16 @@ function handle(socket) {
       return;
     }
     if (cur === "draw") {
-      // Round 2 (you guessing): accept the first guess as correct so the reveal
-      // path is exercised end-to-end. stroke/clear from round 1 are silent.
-      if (m.t === "guess") {
-        scores[ME] += 60;
-        send({ t: "draw", phase: "reveal", word: drawSecret || "ROCKET", winner: ME, round: 2, scores: sc() });
-        at(3000, nextStage);
+      if (!draw) return;
+      if (m.t === "guess" && draw.round === 2 && !draw.done) {
+        const text = String(m.text || "").trim();
+        if (text.toUpperCase() === draw.secret) { drawScore(ME, 60); drawReveal(ME); }
+        else if (text) send({ t: "chat", nick: nicks[ME], text });  // wrong -> chat (once)
+      } else if (m.t === "again") {
+        clearTimers();
+        runDraw();       // replay from round 1
       }
+      // stroke/clear from round 1 are silent (no other clients in the mock).
       return;
     }
     if (cur === "pong") {

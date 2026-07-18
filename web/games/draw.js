@@ -1,7 +1,8 @@
-/* Draw & Guess. Registers handlers for {t:"draw"} (round/role/phase),
-   {t:"ink"} (relayed segments for guessers) and {t:"chat"} (wrong guesses).
-   Coordinates on the wire are normalised 0..1 so any canvas size renders the
-   same picture. The server rotates the drawer and runs the clock. */
+/* Draw & Guess. Registers handlers for {t:"draw"} (round/role/phase/final),
+   {t:"ink"} (relayed segments for guessers). Incoming {t:"chat"} (wrong
+   guesses) is handled centrally in app.js. Coordinates on the wire are
+   normalised 0..1 so any canvas size renders the same picture. The server
+   rotates the drawer, runs the clock, and ends the game with a final board. */
 (function () {
   var canvas, cx;               // 2D context
   var drawing = false;          // pointer is down (drawer only)
@@ -9,6 +10,7 @@
   var lastSent = 0;             // throttle stroke sends
   var role = "";                // "drawer" | "guesser"
   var revealedRound = -1;       // reveal sound guard
+  var finaledFor = false;       // played the final win/lose cue once
 
   function ready() {
     canvas = $("draw-canvas");
@@ -84,16 +86,40 @@
     log.scrollTop = log.scrollHeight;
   }
 
+  // The round timer, drawer podium, and chat routing are shared (see app.js).
+  function renderPodium(board) {
+    var b = A.podium("draw-podium", board);
+    if (!finaledFor) {
+      finaledFor = true;
+      if (b.length && b[0].pid === A.pid) { A.sfx("win"); A.vibe([30, 50, 30, 50, 60]); }
+      else { A.sfx("lose"); }
+    }
+  }
+
   A.handlers.draw = function (m) {
     route("draw");
     if (A.view !== "draw") return;
     if (!canvas) ready();
 
     var status = $("draw-status"), word = $("draw-word");
-    var tools = $("draw-tools"), guess = $("draw-guess"), reveal = $("draw-reveal");
+    var reveal = $("draw-reveal");
+
+    if (m.phase === "final") {
+      role = ""; A.timebarStop("draw-bar");
+      hide("draw-bar"); hide("draw-word"); hide("draw-canvas");
+      hide("draw-tools"); hide("draw-guess"); hide("draw-reveal");
+      show("draw-final");
+      status.textContent = "Game over";
+      renderPodium(m.board);
+      return;
+    }
+
+    // Leaving the final screen (or any non-final message): restore the board.
+    hide("draw-final"); show("draw-word"); show("draw-canvas");
+    finaledFor = false;
 
     if (m.phase === "reveal") {
-      role = "";
+      role = ""; A.timebarStop("draw-bar"); hide("draw-bar");
       hide("draw-tools"); hide("draw-guess"); show("draw-reveal");
       var who = m.winner == null ? "Nobody guessed it" : (esc(nickOf(m.winner)) + " got it");
       reveal.innerHTML = "Word: <b>" + esc(m.word || "") + "</b><br>" + who;
@@ -107,7 +133,7 @@
     }
 
     if (m.phase === "idle") {
-      role = "";
+      role = ""; A.timebarStop("draw-bar"); hide("draw-bar");
       hide("draw-tools"); hide("draw-guess"); show("draw-reveal");
       reveal.textContent = "Get ready...";
       status.textContent = "Waiting";
@@ -120,7 +146,9 @@
     show("draw-word");
     role = m.role;
     revealedRound = -1;
-    status.textContent = "Round " + (m.round || 1);
+    status.textContent = "Round " + (m.round || 1) + " / " + (m.rounds || m.round || 1);
+    noteDeadline(m.deadline, m.dur);
+    A.timebar("draw-bar", m.deadline, m.dur, false);
 
     if (role === "drawer") {
       word.className = "draw-word";
@@ -133,8 +161,8 @@
       word.textContent = blanks(m.len || 0);
       hide("draw-tools"); show("draw-guess");
       $("draw-chat").innerHTML = "";
-      var who = esc(m.drawer || "Someone");
-      chatLine("—", who + " is drawing", "sys");
+      var artist = esc(m.drawer || "Someone");
+      chatLine("—", artist + " is drawing", "sys");
       sizeCanvas();
       canvas.classList.remove("drawable");
     }
@@ -144,11 +172,6 @@
     if (A.view !== "draw" || role !== "guesser") return;
     if (m.clear) { clearCanvas(); return; }
     seg(m.x0, m.y0, m.x1, m.y1);
-  };
-
-  A.handlers.chat = function (m) {
-    if (A.view !== "draw") return;
-    chatLine(m.nick, m.text);
   };
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -172,9 +195,14 @@
       var text = inp.value.trim();
       if (!text) return;
       A.sfx("buzz"); A.vibe(15);
-      chatLine(A.nick || "You", text, "me");
+      // Do NOT echo locally: the server broadcasts guesses back as {t:"chat"}.
       send({ t: "guess", text: text });
       inp.value = "";
+    });
+
+    $("draw-again").addEventListener("click", function () {
+      A.sfx("start"); A.vibe(20);
+      send({ t: "again" });
     });
 
     window.addEventListener("resize", function () {

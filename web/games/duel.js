@@ -89,6 +89,44 @@
     show("duel-score");
   }
 
+  /* ---- Reversi / Othello: 8x8, discs, server sends legal moves in `valid` ---- */
+  function renderReversi(m) {
+    var cols = 8, rows = 8, n = 64;
+    var myTurn = m.turn === m.you;
+    var valid = m.valid || [];
+    var vset = {};
+    valid.forEach(function (i) { vset[i] = 1; });
+    var board = $("duel-board");
+    board.className = "board rev" + (myTurn ? " mine" : "");
+    board.style.gridTemplateColumns = "repeat(8,1fr)";
+
+    var b = m.board || [];
+    var pb = (prev && prev.length === n) ? prev : null;
+    var rebuild = board.childElementCount !== n;
+    if (rebuild) board.innerHTML = "";
+    for (var i = 0; i < n; i++) {
+      var cell = rebuild ? document.createElement("div") : board.children[i];
+      var v = b[i] || 0;
+      var isNew = pb && pb[i] === "0" && v !== 0;
+      var own = v === 0 ? "" : (v === m.me ? " you" : " opp");
+      var canPlay = myTurn && vset[i];
+      cell.className = "cell" + own + (isNew ? " drop" : "") + (canPlay ? " playable" : "");
+      if (rebuild) board.appendChild(cell);
+    }
+
+    board.onclick = function (e) {
+      if (!myTurn) return;
+      var idx = Array.prototype.indexOf.call(board.children, e.target);
+      if (idx < 0 || !vset[idx]) return;
+      move(idx);
+    };
+
+    var sc = $("duel-score");
+    sc.innerHTML = '<span class="you">You ' + (m.sme || 0) + "</span>" +
+                   '<span class="opp">' + esc(m.opp || "Opp") + " " + (m.sopp || 0) + "</span>";
+    show("duel-score");
+  }
+
   function bindEdge(el, n, myTurn) {
     if (!myTurn) return;
     el.classList.add("tap");
@@ -105,7 +143,9 @@
     turn.textContent = myTurn ? "Your turn" : (esc(m.opp || "Opponent") + "'s turn");
     turn.className = "turn" + (myTurn ? " you" : "");
 
-    if (m.kind === "dots") renderDots(m); else renderGrid(m);
+    if (m.kind === "dots") renderDots(m);
+    else if (m.kind === "reversi") renderReversi(m);
+    else renderGrid(m);
 
     // Cue when the turn flips to us (skip the very first render of a match).
     if (prevPhase === "playing" && myTurn && !prevTurnMine) { A.sfx("tick"); A.vibe(30); }
@@ -138,7 +178,7 @@
   A.handlers.duel = function (m) {
     route("duel");
     if (A.view !== "duel") return;   // still on landing; render when joined
-    var title = GAME_LABEL[({ c4: "connect4", ttt: "tictactoe", dots: "dots" })[m.kind]] || "Duel";
+    var title = GAME_LABEL[({ c4: "connect4", ttt: "tictactoe", dots: "dots", reversi: "reversi" })[m.kind]] || "Duel";
     $("duel-title").textContent = title;
     if (m.phase === "playing") renderPlaying(m);
     else if (m.phase === "over") renderOver(m);

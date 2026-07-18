@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41 // 'A'
 #define HA_FW_MAGIC_2 0x52 // 'R'
 #define HA_FW_MAGIC_3 0x43 // 'C'  ("HARC" = Hotspot ARCade)
-#define HA_FW_VERSION 3 // v3: phone-driven trivia (topics streamed, ESP orchestrates)
+#define HA_FW_VERSION 6 // v6: fix trivia countdown showing topic[0] instead of the voted winner
 
 // Flipper -> ESP
 enum {
@@ -57,6 +57,10 @@ enum {
     HA_GAME_DOTS = 4,
     HA_GAME_DRAW = 5,
     HA_GAME_PONG = 6,
+    HA_GAME_REACT = 7, // reaction duel (fastest finger)
+    HA_GAME_WYR = 8, // would you rather (poll)
+    HA_GAME_SCRAMBLE = 9, // word scramble race
+    HA_GAME_REVERSI = 10, // reversi/othello (duel kind)
 };
 
 // CRC-8/ATM: poly 0x07, init 0x00, no reflect, no xorout. Identical both sides.

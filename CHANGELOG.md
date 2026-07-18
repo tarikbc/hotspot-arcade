@@ -6,16 +6,34 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-18
+
+Ten games, player identity, emoji reactions, an on-device ESP flasher, and firmware
+versioning. Firmware **v6**.
+
 ### Added
 
-- **Phone-driven trivia** (firmware v3): trivia is now self-organizing and hosted entirely
+- **Player identity**: pick an emoji avatar (16 options) on the landing screen; it shows in
+  every player list, lobby, leaderboard, and podium.
+- **Emoji reactions**: a corner button fires 👍😂🔥😮🎉❤️ that float up on every phone in any
+  game (its own `{t:"emoji"}` message).
+- **Four more games** (firmware v5): **Reversi/Othello** (8x8 flanking-capture engine on the
+  duel system), and three whole-group party games — **Would You Rather** (live A/B poll),
+  **Word Scramble** (unscramble-and-type race), and **Reaction Duel** (fastest-finger with
+  false-start DQ).
+- **Phone-driven trivia** (firmware v3): trivia is self-organizing and hosted entirely
   by the ESP. Players ready up and vote a topic in the lobby, an all-ready 5-second
   countdown starts the round, questions reveal when everyone answers or a timer expires,
   a collapsible leaderboard rides along, and a final podium ends it (with Play again). The
   Flipper streams every SD pack as a votable topic at session start.
-- **Four new games** on the shared engine: **Tic-Tac-Toe** and **Dots & Boxes** (1v1
+- **Four games** on the shared engine: **Tic-Tac-Toe** and **Dots & Boxes** (1v1
   duels alongside Connect Four, with a rematch), **Drawing & guessing** (rotating drawer,
   stroke relay, chat), and real-time **Pong** (fixed-timestep physics tick).
+- **Shared web components**: the whole-group games reuse one implementation each of the
+  ready-up lobby, countdown, timer bar, collapsible live leaderboard, and final podium
+  (`A.readyLobby` / `A.countdown` / `A.timebar` / `A.showLead` / `A.podium`).
+- **Lobby chat**: a shared chat in the app lobby (and Draw & Guess), echo-deduplicated
+  server-side.
 - **Phone feel**: WebAudio sound effects, `navigator.vibrate` haptics, and micro-animations
   across the web client. Unified duel renderer (`web/games/duel.js`).
 - **On-device ESP flasher**: flash the bundled firmware straight from the Flipper over the
@@ -33,6 +51,13 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 - Game selection is a pure selector; the dashboard hosts the active game. Dashboard layout
   redesigned (status header, grouped join info). "Install Firmware" flashes the bundled
   default directly (no file picker).
+
+### Fixed
+
+- Trivia countdown showed the first pack's name instead of the voted-for topic (the winning
+  topic is now locked in when the countdown starts, so the name and questions agree).
+- Countdown timer bars mis-calibrated because the ESP sends `deadline` in ms but `dur` in
+  seconds; durations are now normalized to ms in one shared place.
 
 ## [0.1.0] - 2026-07-17
 
@@ -73,5 +98,6 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tarikbc/hotspot-arcade/releases/tag/v0.1.0

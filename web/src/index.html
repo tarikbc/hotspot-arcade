@@ -22,6 +22,17 @@
 <!-- Reconnect banner -->
 <div id="netbar" class="netbar hide">Reconnecting...</div>
 
+<!-- Shared collapsible live leaderboard, pinned under the header. Any group-score
+     game (trivia / scramble / reaction) mounts it via A.showLead(board). -->
+<div id="lead" class="lead hide">
+  <button id="lead-bar" class="lead-bar" type="button" aria-expanded="false">
+    <span id="lead-sum" class="lead-sum"></span>
+    <span class="lead-hint">Board</span>
+    <span id="lead-caret" class="lead-caret">&#9660;</span>
+  </button>
+  <ol id="lead-full" class="lead-full hide"></ol>
+</div>
+
 <!-- 1. Landing / nickname -->
 <section id="landing" class="screen">
   <div class="brand">
@@ -33,6 +44,10 @@
     <input id="nick" maxlength="12" autocomplete="off" autocapitalize="off"
            spellcheck="false" placeholder="e.g. Nova">
   </label>
+  <div class="field">
+    <span class="sub">Pick an avatar</span>
+    <div id="avatars" class="avatars"></div>
+  </div>
   <button id="play" class="btn big">Play</button>
   <a id="openbrowser" class="hint-link" href="http://192.168.4.1/">Open in browser</a>
   <p class="hint">If this page closes, rejoin the WiFi and open
@@ -44,21 +59,18 @@
   <header class="bar"><h2>Lobby</h2><span id="lobby-me" class="me"></span></header>
   <div id="lobby-game" class="game-state">Waiting for the host to pick a game.</div>
   <ul id="players" class="players"></ul>
+  <p class="sub">Chat</p>
+  <div id="lobby-chat" class="chat"></div>
+  <form id="lobby-form" class="guess-row" autocomplete="off">
+    <input id="lobby-input" maxlength="100" autocomplete="off" autocapitalize="sentences"
+           spellcheck="false" placeholder="Say something">
+    <button class="btn sm" type="submit">Send</button>
+  </form>
 </section>
 
 <!-- 3. Trivia — fully phone-driven, self-organizing (lobby/countdown/
      question/reveal/final sub-states, all driven by {t:"trivia"} messages). -->
 <section id="trivia" class="screen hide">
-
-  <!-- Collapsible leaderboard, pinned at top during question/reveal. -->
-  <div id="tv-lead" class="lead hide">
-    <button id="tv-lead-bar" class="lead-bar" type="button" aria-expanded="false">
-      <span id="tv-lead-sum" class="lead-sum"></span>
-      <span class="lead-hint">Board</span>
-      <span id="tv-lead-caret" class="lead-caret">&#9660;</span>
-    </button>
-    <ol id="tv-lead-full" class="lead-full hide"></ol>
-  </div>
 
   <!-- Lobby: ready toggle + topic vote -->
   <div id="tv-lobby" class="hide">
@@ -123,6 +135,7 @@
 <!-- 5. Draw & Guess -->
 <section id="draw" class="screen hide">
   <header class="bar"><h2>Draw &amp; Guess</h2><span id="draw-status" class="me"></span></header>
+  <div id="draw-bar" class="timebar hide"><i></i></div>
   <div id="draw-word" class="draw-word"></div>
   <canvas id="draw-canvas" class="draw-canvas"></canvas>
   <div id="draw-tools" class="draw-tools hide">
@@ -137,6 +150,10 @@
     </form>
   </div>
   <div id="draw-reveal" class="game-state hide"></div>
+  <div id="draw-final" class="hide">
+    <ol id="draw-podium" class="podium"></ol>
+    <button id="draw-again" class="btn big">Play again</button>
+  </div>
 </section>
 
 <!-- 6. Pong -->
@@ -163,6 +180,88 @@
     <button id="pong-back" class="btn big">Back to lobby</button>
   </div>
 </section>
+
+<!-- 7. Would You Rather — whole-group live A/B poll -->
+<section id="wyr" class="screen hide">
+  <div id="wyr-lobby" class="hide">
+    <header class="bar"><h2>Would You Rather</h2><span id="wyr-me" class="me"></span></header>
+    <ul id="wyr-players" class="players"></ul>
+    <button id="wyr-ready" class="btn big">I'm ready</button>
+  </div>
+  <div id="wyr-count" class="hide count">
+    <div class="count-topic">Would you rather</div>
+    <div id="wyr-count-num" class="count-num">5</div>
+    <div class="sub">Starting</div>
+  </div>
+  <div id="wyr-play" class="hide">
+    <div class="bar"><span id="wyr-meta" class="me"></span><span id="wyr-tally" class="me"></span></div>
+    <div id="wyr-opts" class="wyr-opts"></div>
+  </div>
+  <div id="wyr-final" class="hide">
+    <header class="bar"><h2>That's a wrap</h2></header>
+    <div class="game-state">Thanks for playing. Ready up for another round.</div>
+    <button id="wyr-again" class="btn big">Play again</button>
+  </div>
+</section>
+
+<!-- 8. Word Scramble race -->
+<section id="scramble" class="screen hide">
+  <div id="scr-lobby" class="hide">
+    <header class="bar"><h2>Word Scramble</h2><span id="scr-me" class="me"></span></header>
+    <ul id="scr-players" class="players"></ul>
+    <button id="scr-ready" class="btn big">I'm ready</button>
+  </div>
+  <div id="scr-count" class="hide count">
+    <div class="count-topic">Unscramble</div>
+    <div id="scr-count-num" class="count-num">5</div>
+    <div class="sub">Starting</div>
+  </div>
+  <div id="scr-play" class="hide">
+    <div class="bar"><span id="scr-meta" class="me"></span><span id="scr-status" class="me"></span></div>
+    <div id="scr-bar" class="timebar hide"><i></i></div>
+    <div id="scr-letters" class="scr-letters"></div>
+    <form id="scr-form" class="guess-row" autocomplete="off">
+      <input id="scr-input" maxlength="24" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="Type the word">
+      <button class="btn sm" type="submit">Go</button>
+    </form>
+  </div>
+  <div id="scr-final" class="hide">
+    <header class="bar"><h2>Final</h2></header>
+    <ol id="scr-podium" class="podium"></ol>
+    <button id="scr-again" class="btn big">Play again</button>
+  </div>
+</section>
+
+<!-- 9. Reaction Duel (fastest finger) -->
+<section id="react" class="screen hide">
+  <div id="rc-lobby" class="hide">
+    <header class="bar"><h2>Reaction Duel</h2><span id="rc-me" class="me"></span></header>
+    <ul id="rc-players" class="players"></ul>
+    <button id="rc-ready" class="btn big">I'm ready</button>
+  </div>
+  <div id="rc-count" class="hide count">
+    <div class="count-topic">Get ready</div>
+    <div id="rc-count-num" class="count-num">5</div>
+    <div class="sub">Starting</div>
+  </div>
+  <div id="rc-arena" class="hide">
+    <div class="bar"><span id="rc-meta" class="me"></span></div>
+    <div id="rc-pad" class="rc-pad wait"><span class="rc-big">Wait...</span></div>
+  </div>
+  <div id="rc-final" class="hide">
+    <header class="bar"><h2>Final</h2></header>
+    <ol id="rc-podium" class="podium"></ol>
+    <button id="rc-again" class="btn big">Play again</button>
+  </div>
+</section>
+
+<!-- Emoji reactions: floating layer + a corner button that opens the emoji row -->
+<div id="react-layer" class="react-layer" aria-hidden="true"></div>
+<div id="react-bar" class="react-bar hide">
+  <div id="react-row" class="react-row"></div>
+  <button id="react-fab" class="react-fab" type="button" aria-label="React">😀</button>
+</div>
 
 <div id="toast" class="toast hide"></div>
 

@@ -19,48 +19,66 @@ the rounds. The ESP32 board is the **referee**: it runs the WiFi access point, s
 the game to phones, and keeps the real-time game state. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Games
+Ten games, all phone-driven. Pick your emoji avatar on the way in and fire off emoji
+reactions that float up on everyone's screen mid-game.
+
+**Whole-group** (scale to everyone in the room, ready-up lobby, shared live leaderboard):
 
 - **Trivia** — Kahoot-style and fully self-organizing. Players ready up and vote a topic
   in the lobby; an all-ready 5-second countdown starts it; phones buzz in A/B/C/D with
   points for correct and fast; a collapsible leaderboard rides along and a podium ends
-  it. Topics are the trivia packs on the SD card. Scales to the whole group.
-- **Connect Four**, **Tic-Tac-Toe**, **Dots & Boxes** — 1v1 duels: players challenge
-  each other from their phones, many matches run at once, and there is a rematch button.
-  Wins score on the Flipper leaderboard.
+  it. Topics are the trivia packs on the SD card.
+- **Would You Rather** — a live A/B poll; tap your pick, watch the split reveal.
+- **Word Scramble** — unscramble the word and type it first; fastest correct scores most.
+- **Reaction Duel** — fastest finger: wait for green, tap first to win, false-start and
+  you're out for the round.
+
+**1v1 duels** (challenge a player, many matches at once, rematch button, wins score on
+the Flipper leaderboard):
+
+- **Connect Four**, **Tic-Tac-Toe**, **Dots & Boxes**, **Reversi/Othello**.
+- **Pong** — real-time rally with on-screen paddles.
+
+**Cooperative-ish:**
+
 - **Drawing & guessing** — one player draws on their phone canvas, everyone else guesses
   in a chat; points for the drawer and the first correct guess; rounds rotate the drawer.
-- **Pong** — real-time 1v1: challenge a player and rally with on-screen paddles.
 
-All games run on one pluggable engine on the ESP (the real-time referee), so adding more
-is mostly a new module on each side.
+All games run on one pluggable engine on the ESP (the real-time referee), and the web
+client shares one implementation of the lobby, countdown, timer, leaderboard, and podium,
+so adding a game is mostly a small module on each side.
 
 ## Screenshots
 
-**Phone game client** — the retro, Flipper-flavored web app players open in their browser:
-the landing and lobby, a trivia question and its reveal, and every game (Connect Four,
-Tic-Tac-Toe, Dots & Boxes, Draw & Guess, and Pong):
-
-Trivia is self-organizing: players ready up and vote a topic in the lobby, then it runs
-itself (countdown, questions, a collapsible leaderboard, a final podium):
+**Phone game client** — the retro, Flipper-flavored web app players open in their browser.
+Pick a nickname and an emoji avatar, then land in the lobby:
 
 <p align="center">
+  <img src="docs/img/web-landing.png" alt="Landing screen: nickname entry and emoji avatar picker" width="19%">
   <img src="docs/img/web-trivia-lobby.png" alt="Trivia lobby: ready up and vote a topic with live tallies" width="19%">
   <img src="docs/img/web-trivia.png" alt="Trivia question with A/B/C/D tiles and a collapsible leaderboard" width="19%">
   <img src="docs/img/web-trivia-reveal.png" alt="Trivia reveal: correct answer, per-option counts, live leaderboard" width="19%">
   <img src="docs/img/web-trivia-final.png" alt="Trivia final podium" width="19%">
-  <img src="docs/img/web-landing.png" alt="Landing screen: nickname entry and Play" width="19%">
 </p>
 
-The rest of the games, all phone-driven (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes,
-Drawing, and real-time Pong):
+The whole-group party games (Would You Rather, Word Scramble, Reaction Duel) share the
+ready-up lobby, countdown, and the collapsible live leaderboard:
+
+<p align="center">
+  <img src="docs/img/web-wyr.png" alt="Would You Rather: A/B poll with the live vote split" width="19%">
+  <img src="docs/img/web-scramble.png" alt="Word Scramble: unscramble the letters and type the word" width="19%">
+  <img src="docs/img/web-react.png" alt="Reaction Duel: fastest finger with reaction time and leaderboard" width="19%">
+  <img src="docs/img/web-draw.png" alt="Draw &amp; Guess: shared canvas with a live guess chat" width="19%">
+  <img src="docs/img/web-pong.png" alt="Pong: real-time 1v1 rally with on-screen paddles" width="19%">
+</p>
+
+The 1v1 board duels (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes, Reversi):
 
 <p align="center">
   <img src="docs/img/web-connect4.png" alt="Connect Four: 7x6 board mid-game, your turn" width="19%">
   <img src="docs/img/web-ttt.png" alt="Tic-Tac-Toe: 3x3 duel, your turn" width="19%">
   <img src="docs/img/web-dots.png" alt="Dots &amp; Boxes: claimed boxes and live score" width="19%">
-  <img src="docs/img/web-draw.png" alt="Draw &amp; Guess: shared canvas with a live guess chat" width="19%">
-  <img src="docs/img/web-pong.png" alt="Pong: real-time 1v1 rally with on-screen paddles" width="19%">
+  <img src="docs/img/web-reversi.png" alt="Reversi/Othello: 8x8 board with legal-move hints and disc counts" width="19%">
 </p>
 
 **On the Flipper** — the host device shows the app menu, the live broadcasting dashboard,
@@ -140,9 +158,10 @@ On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
 1. **Set the SSID** (optional). Trivia packs are picked up automatically from the SD card.
 2. **Start Session** — the ESP brings up the AP; the dashboard shows **Broadcasting**.
 3. People **join the WiFi** and open `192.168.4.1`, pick a nickname, and land in the lobby.
-4. **Games** → pick a game. Everything is player-driven from the phones: Trivia self-runs
-   (ready up, vote a topic, play); the duels (Connect Four / Tic-Tac-Toe / Dots & Boxes),
-   **Drawing**, and **Pong** organize themselves too. The dashboard **Feed** watches events.
+4. **Games** → pick a game. Everything is player-driven from the phones: the whole-group
+   games (Trivia, Would You Rather, Word Scramble, Reaction Duel) self-run once players ready
+   up; the duels (Connect Four / Tic-Tac-Toe / Dots & Boxes / Reversi), **Drawing**, and
+   **Pong** organize themselves too. The dashboard **Feed** watches events.
 5. **Leaderboard** shows live scores; **Console** shows the raw event log.
 
 ## Trivia packs

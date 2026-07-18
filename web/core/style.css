@@ -148,11 +148,11 @@ h3{margin:0; font-weight:600}
 .players li.self .ps{background:var(--orange); color:var(--on-orange); padding:2px 8px; border-radius:2px}
 
 /* Trivia */
-.timebar{height:6px; background:var(--surface-2); border:2px solid var(--line); overflow:hidden}
+.timebar{height:6px; margin:10px 0; background:var(--surface-2); border:2px solid var(--line); overflow:hidden}
 .timebar>i{display:block; height:100%; width:100%; background:var(--orange); transform-origin:left}
 .timebar.hot>i{background:var(--bad)}
 .question{font-size:20px; line-height:1.3; min-height:1.3em}
-.opts{display:flex; flex-direction:column; gap:10px}
+.opts{display:flex; flex-direction:column; gap:12px; margin:6px 0}
 .opt{
   display:flex; align-items:center; gap:12px; text-align:left; font-family:var(--font);
   min-height:64px; border-radius:var(--radius); border:2px solid var(--line);
@@ -199,6 +199,8 @@ h3{margin:0; font-weight:600}
 .topic.mine .votes{background:var(--orange); color:var(--on-orange); padding:2px 8px; border-radius:2px}
 /* Ready CTA: orange fill to prompt tapping; ghost once you're ready. */
 #tv-ready.on{background:transparent; color:var(--good); border-color:var(--good); box-shadow:none}
+/* Breathing room around the primary buttons so they aren't cramped. */
+#tv-ready,#tv-again,#play{margin:8px 0}
 
 /* Trivia — countdown */
 .count{display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -345,10 +347,97 @@ h3{margin:0; font-weight:600}
   border-radius:var(--radius); padding:12px 16px; font-size:13px;
 }
 
+/* Avatar picker (landing) */
+.avatars{display:grid; grid-template-columns:repeat(8,1fr); gap:6px}
+.av-pick{
+  appearance:none; font-family:var(--font); cursor:pointer; aspect-ratio:1; min-height:38px;
+  background:var(--surface-2); border:2px solid var(--line); border-radius:var(--radius);
+  font-size:22px; line-height:1; display:grid; place-items:center; padding:0;
+}
+.av-pick.on{border-color:var(--orange); background:var(--bg)}
+.av-pick:active{transform:translateY(1px)}
+/* Avatar chip inside player / podium / leaderboard rows */
+.players .av,.podium .av{font-size:20px; line-height:1; flex:none; width:24px; text-align:center}
+.lead-full .av{font-size:15px; line-height:1; flex:none; width:20px; text-align:center}
+.lead-sum b{color:var(--orange)}
+
+/* Emoji reactions: floating layer + corner button */
+.react-layer{position:fixed; inset:0; z-index:34; pointer-events:none; overflow:hidden}
+.react-layer .float{position:absolute; bottom:14vh; font-size:34px; line-height:1;
+  animation:float-up 2.2s ease-out forwards}
+@keyframes float-up{
+  0%{opacity:0; transform:translateY(0) scale(.6)}
+  15%{opacity:1; transform:translateY(-10vh) scale(1.1)}
+  100%{opacity:0; transform:translateY(-64vh) scale(1)}
+}
+.react-bar{position:fixed; right:14px; bottom:calc(16px + env(safe-area-inset-bottom));
+  z-index:36; display:flex; flex-direction:column; align-items:flex-end; gap:8px}
+.react-fab{
+  appearance:none; font-family:var(--font); cursor:pointer; width:48px; height:48px; padding:0;
+  background:var(--surface-2); border:2px solid var(--orange); border-radius:50%;
+  font-size:22px; line-height:1; display:grid; place-items:center;
+}
+.react-fab:active{transform:translateY(1px)}
+.react-row{display:none; flex-direction:column; gap:6px; padding:8px;
+  background:var(--surface); border:2px solid var(--line); border-radius:var(--radius)}
+.react-bar.open .react-row{display:flex}
+.rx{appearance:none; font-family:var(--font); cursor:pointer; width:44px; height:44px; padding:0;
+  background:var(--surface-2); border:2px solid var(--line); border-radius:var(--radius);
+  font-size:22px; line-height:1; display:grid; place-items:center}
+.rx:active{border-color:var(--orange); transform:translateY(1px)}
+
+/* Reversi: 8x8 disc board; legal cells get an orange hint. */
+.board.rev{grid-template-columns:repeat(8,1fr); gap:2px}
+.board.rev .cell{border-color:var(--line)}
+.board.rev .cell.playable{cursor:pointer}
+.board.rev .cell.playable::after{background:transparent; inset:34%; border-radius:50%;
+  box-shadow:inset 0 0 0 2px var(--orange); opacity:.75}
+.board.rev.mine .cell.playable:active::after{background:var(--orange-dim)}
+
+/* Would You Rather: two big option rows. Structured exactly like the trivia
+   .opt (flex row, min-height, no positioned children) so heights flow cleanly;
+   the reveal split is painted as a background gradient set inline in JS. */
+.wyr-opts{display:flex; flex-direction:column; gap:12px; margin:6px 0}
+.wyr-opt{display:flex; align-items:center; gap:12px; text-align:left; font-family:var(--font);
+  min-height:72px; border-radius:var(--radius); border:2px solid var(--line);
+  background:var(--surface-2); color:var(--text); font-size:17px; font-weight:600;
+  padding:12px 16px; cursor:pointer;
+  transition:border-color .1s ease-out, background .4s ease-out;
+  animation:tile-in .16s ease-out both}
+.wyr-opt:active:not(.locked){transform:translateY(1px); border-color:var(--orange)}
+.wyr-opt .wtxt{flex:1}
+.wyr-opt .wpct{color:var(--orange); font-weight:700; font-variant-numeric:tabular-nums;
+  min-width:36px; text-align:right}
+.wyr-opt.mine{border-color:var(--orange)}
+.wyr-opt.lead{border-color:var(--orange)}
+.wyr-opt.locked{cursor:default}
+
+/* Word Scramble: big spaced letters, answer reveal in orange. */
+.scr-letters{background:var(--surface); border:2px solid var(--line); border-radius:var(--radius);
+  padding:20px 12px; text-align:center; font-weight:700; font-size:30px; letter-spacing:.12em;
+  min-height:1.2em; word-break:break-word; text-transform:uppercase}
+.scr-letters.answer{color:var(--orange); letter-spacing:.18em}
+
+/* Reaction Duel: full tappable arena that flips red -> green. */
+.rc-pad{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+  min-height:54vh; border:2px solid var(--line); border-radius:var(--radius); text-align:center;
+  cursor:pointer; user-select:none; -webkit-user-select:none; padding:20px}
+.rc-pad .rc-big{font-size:40px; font-weight:700; text-transform:uppercase; letter-spacing:.06em}
+.rc-pad .rc-sub{color:var(--text-dim); font-size:13px; text-transform:uppercase; letter-spacing:.08em}
+.rc-pad.wait{background:rgba(255,77,77,.12); border-color:var(--bad); color:var(--bad)}
+.rc-pad.go{background:rgba(70,211,105,.16); border-color:var(--good); color:var(--good);
+  animation:rc-flash .4s ease-out}
+@keyframes rc-flash{from{transform:scale(.97)}to{transform:none}}
+.rc-pad.dq{background:var(--surface); border-color:var(--text-mute); color:var(--text-mute)}
+.rc-pad.reveal{background:var(--surface); border-color:var(--orange); color:var(--text)}
+.rc-pad.reveal .rc-big{color:var(--orange)}
+
 @media (prefers-reduced-motion:reduce){
   .cur{animation:none}
   .cell.drop::after{animation:none}
   .count-num.pop{animation:none}
   .lead.bump{animation:none}
+  .react-layer .float{animation:none; display:none}
+  .rc-pad.go{animation:none}
   *{transition:none!important}
 }

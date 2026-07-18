@@ -202,3 +202,52 @@ The final podium is Flipper-side (from its roster scores); no new message.
   machinery is shared and parameterized by the active `kind`.
 - `move` unifies to `{t:"move","n":<index>}` for every duel (connect4 included;
   it previously used `col`).
+
+---
+
+## 4. v0.2.0 — identity, reactions, four more games
+
+New game ids (UART `SELECT_GAME` / lobby `game`): `7` react, `8` wyr, `9`
+scramble, `10` reversi. Lobby `game` string adds `"react"`, `"wyr"`,
+`"scramble"`, `"reversi"`. Firmware **v6** (`HA_FW_VERSION`).
+
+### 4.1 Player identity + reactions
+
+- `hello` gains an optional `avatar` field (an emoji, UTF-8, default 🙂). Every
+  player object in `players`/leaderboard/podium messages now carries `avatar`.
+- New client intent `react{emoji}`. The ESP broadcasts it to everyone as a
+  **distinct** type `{"t":"emoji","pid","nick","avatar","emoji"}` (not `react`,
+  which is the reaction-duel game state — see below).
+- New client intent `say{text}` broadcasts a lobby/draw chat line as
+  `{"t":"chat","nick","text"}` (the server echoes it back, so clients never render
+  their own locally).
+
+### 4.2 Reversi / Othello (`kind:"reversi"`)
+
+A fourth duel on the shared challenge/accept/rematch flow. `cols:8`, `rows:8`,
+`board` (64 ints, row-major, 0 empty / 1 / 2). `move.n` = cell 0..63; only cells
+that flank and flip at least one opponent disc are legal. Extra fields: `sme`,
+`sopp` (disc counts) and `valid` (array of legal cell indices for the player to
+move, so the client can hint them). The ESP auto-passes a player with no legal
+move and ends the game — most discs wins — when neither can move.
+
+### 4.3 Whole-group party games
+
+Three self-organizing games share a lobby -> countdown -> round -> reveal ->
+final flow. Common client intents: `ready{ready:bool}` (ready-up in the lobby),
+`again` (replay from the final screen). Common server phases: `"lobby"`
+(`players:[{pid,nick,avatar,ready}]`), `"countdown"` (`sec`), and `"final"`.
+Durations are sent in **seconds**; deadlines in ms (server `millis`).
+
+- **Would You Rather** (`t:"wyr"`): `"vote"`/`"reveal"` carry `round`, `rounds`,
+  `a`, `b` (the two options), `myvote` (0/1/-1), `counts` ([a,b]). Vote with the
+  existing `answer{c:0|1}` intent. No scoring — it's a poll.
+- **Word Scramble** (`t:"scramble"`): `"play"` carries `round`, `rounds`, `scram`
+  (shuffled letters), `len`, `solved` (bool, you), `deadline`, `dur`, `scores`.
+  Guess with the existing `guess{text}` intent; first correct scores most
+  (200/120/80/40). `"reveal"` carries `word`; `"final"` a `board` podium.
+- **Reaction Duel** (`t:"react"`): `"armed"` carries `round`, `rounds`, `light`
+  ("wait"/"go"), `dq`, `tapped`, `scores`. Tap with the new `tap` intent; the
+  first valid tap after `light:"go"` wins (200), tapping while `"wait"` DQs you
+  for the round. `"reveal"` carries `winner` (nick or null), `ms`, `iwon`;
+  `"final"` a `board` podium.

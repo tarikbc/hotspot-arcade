@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41
 #define HA_FW_MAGIC_2 0x52
 #define HA_FW_MAGIC_3 0x43
-#define HA_FW_VERSION 3 // the version this app requires; older board -> offer update
+#define HA_FW_VERSION 6 // the version this app requires; older board -> offer update
 
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES 0x10
@@ -52,6 +52,10 @@
 #define HA_GAME_DOTS 4
 #define HA_GAME_DRAW 5
 #define HA_GAME_PONG 6
+#define HA_GAME_REACT 7 // reaction duel (fastest finger)
+#define HA_GAME_WYR 8 // would you rather (poll)
+#define HA_GAME_SCRAMBLE 9 // word scramble race
+#define HA_GAME_REVERSI 10 // reversi/othello (duel kind)
 
 static inline uint8_t ha_crc8_upd(uint8_t crc, uint8_t b) {
     crc ^= b;

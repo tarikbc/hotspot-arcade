@@ -16,10 +16,18 @@ static const char* ha_duel_name(uint8_t g) {
         return "Tic-Tac-Toe";
     case HA_GAME_DOTS:
         return "Dots & Boxes";
+    case HA_GAME_REVERSI:
+        return "Reversi";
     case HA_GAME_DRAW:
         return "Drawing";
     case HA_GAME_PONG:
         return "Pong";
+    case HA_GAME_REACT:
+        return "Reaction Duel";
+    case HA_GAME_WYR:
+        return "Would You Rather";
+    case HA_GAME_SCRAMBLE:
+        return "Word Scramble";
     default:
         return "Game";
     }

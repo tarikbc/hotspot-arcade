@@ -44,12 +44,14 @@ Single Arduino sketch plus header-only helpers (one translation unit):
 - `ha_assets.h` — in-RAM file table. The Flipper streams gzipped files in; the HTTP
   catch-all serves them (with `Content-Encoding: gzip`). No filesystem, so nothing
   survives a reboot; the Flipper re-streams on the next session.
-- `ha_games.h` — the engine: player roster plus all six games and their per-client JSON
-  serialization. Trivia is host-driven; Connect Four / Tic-Tac-Toe / Dots & Boxes share
-  one generalized duel + challenge system (parameterized by kind); Drawing rotates a
-  drawer and relays ink; Pong runs on a fixed-timestep `tick()` (called from the `.ino`
-  loop) alongside Drawing's round timers. Trivia and the duels are event-driven; Pong is
-  the real-time path.
+- `ha_games.h` — the engine: player roster (with emoji avatars) plus all ten games and
+  their per-client JSON serialization. The whole-group games (Trivia, Would You Rather,
+  Word Scramble, Reaction Duel) are phone-driven and self-organizing (ready-up -> countdown
+  -> rounds -> podium); Connect Four / Tic-Tac-Toe / Dots & Boxes / Reversi share one
+  generalized duel + challenge system (parameterized by kind); Drawing rotates a drawer and
+  relays ink; Pong and Reaction Duel run on `tick()` (called from the `.ino` loop) alongside
+  the trivia/party/draw round timers. Emoji reactions broadcast to everyone as a `emoji`
+  message. Trivia and the duels are event-driven; Pong is the real-time path.
 - `ha_json.h` / `ha_proto.h` — tiny JSON reader/writer and the UART frame constants +
   CRC-8.
 
@@ -73,9 +75,10 @@ A `ViewDispatcher` + `SceneManager` app, same shape as flytrap:
 - `helpers/ha_storage.c` — config (FlipperFormat), `manifest.json` parsing, binary-safe
   file reads (pre-reserved buffers to avoid an OOM-inducing 2x realloc peak), trivia
   pack loading.
-- `scenes/` — main_menu, lobby (dashboard + start flow), game_select, host_trivia (live
-  answer bars + podium), host_duel (event feed for the player-driven games), leaderboard,
-  settings, ssid_input, flasher, textview (console).
+- `scenes/` — main_menu, lobby (dashboard + start flow), game_select, host_duel (event feed
+  for the player-driven games), leaderboard, settings, ssid_input, flasher, textview
+  (console). Every game is phone-driven, so the Flipper only selects the game and watches
+  the feed — there is no per-game host screen.
 - `helpers/ha_esp_port.c` + `helpers/ha_flasher.c` + `scenes/..._flasher.c` — an on-device
   ESP flasher over the GPIO UART (Espressif `esp-serial-flasher`, Apache-2.0, vendored in
   `lib/esp-serial-flasher/` trimmed to the ESP32-S2 stub). It borrows the serial line via
@@ -87,9 +90,12 @@ so there are no locks on the Flipper side.
 
 ## Web client (`web/`)
 
-Vanilla JS, no framework, built into a single gzipped `index.html` (about 7 KB). `app.js`
-owns the WebSocket, nickname (localStorage), lobby, and screen router; `trivia.js` and
-`connect4.js` register handlers for their message types. Styled to the Flipper design
+Vanilla JS, no framework, built into a single gzipped `index.html` (about 18 KB). `app.js`
+owns the WebSocket, identity (nickname + emoji avatar in localStorage), lobby, screen
+router, emoji reactions, and the shared game-UI components (`A.readyLobby` / `A.countdown`
+/ `A.timebar` / `A.showLead` leaderboard / `A.podium`). Each game module (`trivia.js`,
+`duel.js` for the four board duels, `draw.js`, `pong.js`, `wyr.js`, `scramble.js`,
+`react.js`) registers handlers for its message types and reuses those components. Styled to the Flipper design
 system ([../web/DESIGN.md](../web/DESIGN.md)): dark, monochrome, one orange accent,
 mono/uppercase, sharp borders. The captive page is a real-browser handoff because iOS/
 Android captive mini-browsers do not run WebSockets reliably.
