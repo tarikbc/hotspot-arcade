@@ -1,6 +1,7 @@
 #pragma once
 
 #include <furi.h>
+#include <furi_hal_serial.h>
 
 typedef struct HaUart HaUart;
 
@@ -20,3 +21,10 @@ void ha_uart_deinit(HaUart* uart);
 size_t ha_uart_rx(HaUart* uart, uint8_t* buf, size_t maxlen);
 
 void ha_uart_tx(HaUart* uart, const uint8_t* data, size_t len);
+
+// Lend the serial line to a raw user (the ESP flasher). `suspend` stops our async
+// RX so nothing else consumes bytes and hands back the underlying handle; `resume`
+// restores our RX at the normal session baud. Suspend before flashing, resume after.
+FuriHalSerialHandle* ha_uart_serial(HaUart* uart);
+void ha_uart_suspend(HaUart* uart);
+void ha_uart_resume(HaUart* uart);

@@ -9,12 +9,10 @@ static bool ha_custom_event_callback(void* context, uint32_t event) {
             ha_session_rx(app);
             return scene_manager_handle_custom_event(app->scene_manager, HaEventRefreshView);
         }
-        // Idle: drain so the RX stream can't fill, but note traffic so we know the
-        // board is alive before a session starts.
-        uint8_t junk[64];
-        bool got = false;
-        while(ha_uart_rx(app->uart, junk, sizeof(junk)) > 0) got = true;
-        if(got) app->last_rx_tick = furi_get_tick();
+        // Idle: still parse RX so the board's PING beacon is tracked (last_ping_tick)
+        // for firmware detection before a session starts. Non-PING/STATUS frames are
+        // ignored while idle (guarded in dispatch_frame).
+        ha_session_rx(app);
         return true;
     }
     return scene_manager_handle_custom_event(app->scene_manager, event);
@@ -22,24 +20,43 @@ static bool ha_custom_event_callback(void* context, uint32_t event) {
 
 static bool ha_back_event_callback(void* context) {
     HotspotArcadeApp* app = context;
+    if(app->flashing) return true; // swallow Back: a flash can't be safely aborted mid-write
     return scene_manager_handle_back_event(app->scene_manager);
 }
 
 static void ha_tick_callback(void* context) {
     HotspotArcadeApp* app = context;
     if(app->awaiting_board) {
-        if(furi_get_tick() - app->last_rx_tick < 2500) {
+        if(furi_get_tick() - app->last_ping_tick < 2500) {
             app->awaiting_board = false;
             scene_manager_handle_custom_event(app->scene_manager, HaEventDetectBoard);
         }
         return;
     }
     if(!app->session_active) return;
-    bool stale = (furi_get_tick() - app->last_rx_tick) > HA_LINK_TIMEOUT_MS;
-    if(stale && !app->link_lost) {
-        app->link_lost = true;
+
+    // Handshake watchdog: we got past board-detection but the ESP isn't acking our
+    // protocol (wrong or absent firmware). Don't hang on "Preparing board..." forever;
+    // drop to the "no board -> Install firmware" prompt so the user can flash the
+    // right firmware on-device. (A board running our firmware keeps the watchdog fed
+    // via on_status, so this only fires for the wrong-firmware case.)
+    if(app->hs > HaHsIdle && app->hs < HaHsUp &&
+       (furi_get_tick() - app->last_handshake_tick) > HA_HANDSHAKE_TIMEOUT_MS) {
         app->session_active = false;
         app->portal_running = false;
+        app->hs = HaHsIdle;
+        app->link_lost = false;
+        furi_string_set(app->status, "noboard");
+        scene_manager_handle_custom_event(app->scene_manager, HaEventRefreshView);
+        return;
+    }
+
+    bool stale = (furi_get_tick() - app->last_rx_tick) > HA_LINK_TIMEOUT_MS;
+    if(stale && !app->link_lost) {
+        // Board went quiet. Keep the session owned and flag the link so the
+        // dashboard shows "Reconnecting..."; if the board comes back (PING resumes,
+        // or it reboots and re-handshakes) the session recovers on its own.
+        app->link_lost = true;
         scene_manager_handle_custom_event(app->scene_manager, HaEventRefreshView);
     }
 }
@@ -86,6 +103,7 @@ static HotspotArcadeApp* ha_app_alloc(void) {
     app->status = furi_string_alloc_set_str("idle");
     app->console = furi_string_alloc();
     app->last_event = furi_string_alloc();
+    app->flash_manifest = furi_string_alloc();
 
     app->question_dur = HA_DEFAULT_DUR;
     app->sound_on = true;
@@ -131,6 +149,7 @@ static void ha_app_free(HotspotArcadeApp* app) {
     furi_string_free(app->status);
     furi_string_free(app->console);
     furi_string_free(app->last_event);
+    furi_string_free(app->flash_manifest);
 
     furi_record_close(RECORD_NOTIFICATION);
     furi_record_close(RECORD_DIALOGS);

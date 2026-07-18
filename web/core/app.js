@@ -5,7 +5,7 @@ var A = {
   ws: null,
   pid: null,
   nick: "",
-  view: "landing",     // landing | lobby | trivia | c4
+  view: "landing",     // landing | lobby | trivia | duel | draw | pong
   joined: false,       // true once the user committed a nick (Play) or is rejoining
   offset: 0,           // serverMillis - localNow, learned from first timed msg
   offsetSet: false,
@@ -22,10 +22,23 @@ function esc(s) {
   });
 }
 
+/* Which lobby `game` string maps to which top-level screen, and its title.
+   The three duels share the single "duel" screen; the duel message's `kind`
+   drives the actual board. */
+var SCREENS = ["landing", "lobby", "trivia", "duel", "draw", "pong"];
+var GAME_SCREEN = {
+  trivia: "trivia", connect4: "duel", tictactoe: "duel", dots: "duel",
+  draw: "draw", pong: "pong",
+};
+var GAME_LABEL = {
+  trivia: "Trivia", connect4: "Connect 4", tictactoe: "Tic-Tac-Toe",
+  dots: "Dots & Boxes", draw: "Draw & Guess", pong: "Pong",
+};
+
 /* Show exactly one top-level screen. */
 function screen(name) {
   A.view = name;
-  ["landing", "lobby", "trivia", "c4"].forEach(function (s) {
+  SCREENS.forEach(function (s) {
     $(s).classList.toggle("hide", s !== name);
   });
 }
@@ -121,22 +134,85 @@ function dispatch(m) {
       toast(m.msg);
       break;
     case "pong":
+      // "pong" is overloaded: a bare {t:"pong"} is the keepalive reply, while
+      // the Pong game sends {t:"pong", phase, ...}. Only the latter has a phase.
+      if (m.phase && A.handlers.pong) A.handlers.pong(m);
       break;
     default:
       if (A.handlers[m.t]) A.handlers[m.t](m);
   }
 }
 
+/* Look up a player's nick from the last lobby snapshot. */
+function nickOf(pid) {
+  var p = (A.players || []).find(function (x) { return x.pid === pid; });
+  return p ? p.nick : "Player";
+}
+
+/* Shared 1v1 challenge lobby, used by both the duel screen and pong. Renders
+   incoming/outgoing challenges into `incEl` and the challengeable-player list
+   into `listEl`; all three intents (challenge/accept/cancel) are generic. */
+function lobbyView(incEl, listEl, challenges) {
+  challenges = challenges || [];
+  function btn(parent, label, cls, fn) {
+    var b = document.createElement("button");
+    b.className = cls; b.textContent = label;
+    b.addEventListener("click", fn);
+    parent.appendChild(b);
+    return b;
+  }
+
+  incEl.innerHTML = "";
+  challenges.forEach(function (c) {
+    var row = document.createElement("div");
+    row.className = "challenge";
+    if (c.to === A.pid) {
+      row.innerHTML = '<span class="pn">' + esc(nickOf(c.from)) + " challenged you</span>";
+      btn(row, "Accept", "btn sm", function () { A.sfx("buzz"); send({ t: "accept", from: c.from }); });
+      btn(row, "Decline", "btn ghost sm", function () { send({ t: "cancel" }); });
+    } else if (c.from === A.pid) {
+      row.innerHTML = '<span class="pn">Waiting on ' + esc(nickOf(c.to)) + "...</span>";
+      btn(row, "Cancel", "btn ghost sm", function () { send({ t: "cancel" }); });
+    } else { return; }
+    incEl.appendChild(row);
+  });
+
+  var iChallenged = challenges.some(function (c) { return c.from === A.pid; });
+  var others = (A.players || []).filter(function (p) { return p.pid !== A.pid; });
+  listEl.innerHTML = "";
+  if (!others.length) {
+    var empty = document.createElement("li");
+    empty.innerHTML = '<span class="pn" style="color:var(--text-dim)">No other players yet.</span>';
+    listEl.appendChild(empty);
+  }
+  others.forEach(function (p) {
+    var li = document.createElement("li");
+    li.innerHTML = '<span class="dot"></span><span class="pn">' + esc(p.nick) + "</span>";
+    var pending = challenges.some(function (c) {
+      return (c.from === A.pid && c.to === p.pid) || (c.from === p.pid && c.to === A.pid);
+    });
+    var b = btn(li, pending ? "Pending" : "Challenge", "btn sm", function () {
+      A.sfx("buzz"); send({ t: "challenge", to: p.pid });
+    });
+    if (pending || iChallenged) b.disabled = true;
+    listEl.appendChild(li);
+  });
+}
+A.lobbyView = lobbyView;
+
 /* Lobby: player list + which game the host picked. Routes into the active
-   game view; a trivia/c4 message can also switch us in (see game modules). */
+   game view; a game message can also switch us in (see game modules). */
 function onLobby(m) {
   if (m.me) A.pid = m.me;
-  A.players = m.players || [];   // kept for the Connect 4 challenge list
+  var prevCount = (A.players || []).length;
+  A.players = m.players || [];   // kept for the duel/pong challenge lists
+  // A new arrival (after we ourselves joined) gets a little blip.
+  if (A.joined && A.players.length > prevCount && prevCount > 0) { A.sfx("join"); A.vibe(20); }
   $("lobby-me").textContent = A.nick ? "You: " + A.nick : "";
 
   var list = $("players");
   list.innerHTML = "";
-  (m.players || []).forEach(function (p) {
+  A.players.forEach(function (p) {
     var li = document.createElement("li");
     if (p.pid === A.pid) li.className = "self";
     li.innerHTML =
@@ -148,18 +224,14 @@ function onLobby(m) {
 
   var g = m.game || "none";
   var gs = $("lobby-game");
-  if (g === "none") {
-    gs.textContent = "Waiting for the host to pick a game.";
-  } else {
-    gs.textContent = (g === "trivia" ? "Trivia" : "Connect 4") + " starting...";
-  }
+  gs.textContent = g === "none"
+    ? "Waiting for the host to pick a game."
+    : (GAME_LABEL[g] || g) + " starting...";
 
-  // If the host went back to the plain lobby, leave any game screen.
+  // If the host went back to the plain lobby, leave any game screen. Otherwise
+  // show the shell of the chosen game; the game message fills in details.
   if (g === "none" && A.view !== "landing") route("lobby");
-  else if (g !== "none" && A.view === "lobby") {
-    // Show the shell of the chosen game; the game message fills in details.
-    route(g === "trivia" ? "trivia" : "c4");
-  }
+  else if (g !== "none" && A.view === "lobby" && GAME_SCREEN[g]) route(GAME_SCREEN[g]);
 }
 
 /* Landing flow */
@@ -169,6 +241,8 @@ function startPlay() {
   A.nick = n;
   A.joined = true;
   setNick();
+  A.initAudio();          // first gesture: unlock audio for the session
+  A.sfx("start"); A.vibe(30);
   try { localStorage.setItem("ha_nick", n); } catch (e) {}
   send({ t: "hello", nick: n });
   screen("lobby");

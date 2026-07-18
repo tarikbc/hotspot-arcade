@@ -7,6 +7,11 @@ Uploads three things to the SD card, each verified by on-device md5:
       (the *.gz files AND manifest.json; the uncompressed index.html is skipped)
   - trivia packs (*.txt)      -> /ext/apps_data/hotspot_arcade/trivia/<name>
 
+The ESP firmware bundle is NOT deployed here: it ships inside the .fap
+(fap_file_assets) and the loader extracts it to
+/ext/apps_assets/hotspot_arcade/firmware/ on launch, so the on-device flasher
+finds it with no SD setup. Build the fap with tools/build-fap.sh to bundle it.
+
 Usage: python3 tools/deploy-to-flipper.py --port /dev/cu.usbmodemflip_XXXX
 Requires: pyserial
 

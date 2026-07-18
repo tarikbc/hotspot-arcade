@@ -25,8 +25,11 @@ function minify(src, css) {
 const css = minify(read("core/style.css"), true);
 const js = [
   read("core/app.js"),
+  read("core/sound.js"),
   read("games/trivia.js"),
-  read("games/connect4.js"),
+  read("games/duel.js"),
+  read("games/draw.js"),
+  read("games/pong.js"),
 ].map((f) => minify(f, false)).join("\n");
 
 let html = read("src/index.html")

@@ -69,7 +69,7 @@ All control messages are framed so the link can resync after noise:
 | 0x83 | SCORE        | `pid(1)` `delta(2 LE, signed)` `reason` — authoritative-persist on Flipper |
 | 0x84 | ROUND_RESULT | JSON, game-specific (trivia: `{"correct":[pid..]}`, c4: `{"win":pid,"lose":pid}` or `{"draw":[a,b]}`) |
 | 0x85 | EVENT        | JSON for host display, e.g. `{"answers":3,"total":5}` or `{"c4":"A vs B started"}` |
-| 0x86 | PING         | (none) — ~every 2s liveness beacon |
+| 0x86 | PING         | identity beacon ~every 2s: `magic(4)` + `version(2 LE)`. `magic` = `48 41 52 43` ("HARC"); the Flipper only treats a magic-matched PING as "our board present", and flags `version < HA_FW_VERSION` as an outdated board to update. |
 
 ### 1.3 Raw-bulk escape (asset upload)
 
@@ -135,3 +135,70 @@ The ESP scores the live session (speed+correctness for trivia, win/draw for c4)
 and (a) keeps a **live mirror** it broadcasts to phones in `players[].score`, and
 (b) reports each delta to the Flipper via UART `SCORE` for the host display and
 persistent leaderboard. Both stay consistent because every delta is reported.
+
+---
+
+## 3. v0.2 game expansion
+
+New game ids (UART `SELECT_GAME` / lobby `game`): `3` tictactoe, `4` dots,
+`5` draw, `6` pong. Lobby `game` string adds: `"tictactoe"`, `"dots"`, `"draw"`,
+`"pong"`.
+
+### 3.1 Duels (connect4, tictactoe, dots) — unified
+
+All three are 1v1 and share the same lobby flow. Client intents:
+`challenge{to}`, `accept{from}`, `cancel`, `move{n}`, `rematch`, `leaveGame`.
+`move.n` is a grid index whose meaning depends on `kind` (below). `rematch` in an
+`over` match restarts the same pairing (first move alternates) if the opponent is
+still present.
+
+Server -> client message `t:"duel"`, common fields: `kind`
+("c4"/"ttt"/"dots"), `phase` ("lobby"/"playing"/"over"), `you` (pid), `me`
+(1 or 2), `opp` (nick), `turn` (pid), `result` ("win"/"lose"/"draw", over only),
+`challenges` (`[{from,to}]`, lobby only).
+
+- **c4** (`kind:"c4"`): `cols:7`, `rows:6`, `need:4`, `gravity:true`, `board`
+  (42 ints, row-major, row 0 top, 0/1/2). `move.n` = column 0..6.
+- **ttt** (`kind:"ttt"`): `cols:3`, `rows:3`, `need:3`, `gravity:false`, `board`
+  (9 ints). `move.n` = cell 0..8.
+- **dots** (`kind:"dots"`): boxes grid `w`,`h` (e.g. 5x5 boxes). `hedges`
+  (`(h+1)*w` ints 0/1 = drawn), `vedges` (`h*(w+1)` ints), `boxes`
+  (`w*h` ints 0/1/2 = owner). `sme`,`sopp` (box counts). `move.n` = edge index:
+  horizontal edges `0..(h+1)*w-1` then vertical edges after. Completing a box
+  grants another turn.
+
+### 3.2 Drawing + guessing (`draw`)
+
+Host selects the game; the ESP runs rounds off its built-in word list, rotating
+the drawer. Server -> client `t:"draw"`:
+- `phase:"draw"`, `role:"drawer"`: `word`, `round`, `drawer` (pid), `scores`.
+- `phase:"draw"`, `role:"guesser"`: `len` (word length), `round`, `drawer`
+  (nick), `scores`.
+- `phase:"reveal"`: `word`, `winner` (pid or null), `scores`.
+- `phase:"idle"`: `scores`.
+
+Ink: the drawer sends line segments `stroke{x0,y0,x1,y1}` (normalized 0..1) and
+`clear{}`; the server relays to guessers as `ink{x0,y0,x1,y1}` / `ink{clear:true}`.
+Guessing: a guesser sends `guess{text}`; a correct guess (case-insensitive) scores
+and ends the round; a wrong guess is broadcast as `chat{nick,text}`.
+
+### 3.3 Pong (`pong`)
+
+1v1 via the same `challenge`/`accept`/`cancel`/`leaveGame` flow. Real-time: the
+ESP ticks the ball + paddles and broadcasts. Server -> client `t:"pong"`:
+`phase` ("lobby"/"playing"/"over"), `challenges` (lobby); playing: `you`, `me`
+(1/2), `opp`, `ball{x,y}` (0..1), `p1`, `p2` (paddle y, 0..1), `s1`, `s2`
+(scores); over: `result`. Client input: `paddle{dir}` with `dir` -1/0/1.
+
+### 3.4 Trivia depth (additive)
+
+The in-question `EVENT` (ESP -> Flipper) gains a `counts` array so the host screen
+can show live per-option bars: `{"answers":n,"total":m,"counts":[c0,c1,c2,c3]}`.
+The final podium is Flipper-side (from its roster scores); no new message.
+
+### 3.5 Notes
+
+- Only one game is active at a time (host-selected), so the duel lobby/challenge
+  machinery is shared and parameterized by the active `kind`.
+- `move` unifies to `{t:"move","n":<index>}` for every duel (connect4 included;
+  it previously used `col`).

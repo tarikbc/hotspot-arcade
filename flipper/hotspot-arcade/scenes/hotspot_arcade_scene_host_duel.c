@@ -8,12 +8,29 @@ static void ha_duel_button_cb(GuiButtonType result, InputType type, void* contex
         view_dispatcher_send_custom_event(app->view_dispatcher, HaEventShowLeaderboard);
 }
 
+static const char* ha_duel_name(uint8_t g) {
+    switch(g) {
+    case HA_GAME_CONNECT4:
+        return "Connect Four";
+    case HA_GAME_TICTACTOE:
+        return "Tic-Tac-Toe";
+    case HA_GAME_DOTS:
+        return "Dots & Boxes";
+    case HA_GAME_DRAW:
+        return "Drawing";
+    case HA_GAME_PONG:
+        return "Pong";
+    default:
+        return "Game";
+    }
+}
+
 static void ha_duel_render(HotspotArcadeApp* app) {
     widget_reset(app->widget);
     FuriString* tmp = furi_string_alloc();
 
     widget_add_string_element(
-        app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Connect Four");
+        app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, ha_duel_name(app->active_game));
     widget_add_line_element(app->widget, 0, 12, 127, 12);
 
     widget_add_text_box_element(
@@ -24,7 +41,7 @@ static void ha_duel_render(HotspotArcadeApp* app) {
         20,
         AlignLeft,
         AlignTop,
-        "Players challenge each other from their phones.",
+        "Players play from their phones. Watch the feed below.",
         true);
 
     furi_string_printf(tmp, "Players: %d", ha_player_count(app));

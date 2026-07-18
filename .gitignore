@@ -6,6 +6,10 @@ flipper/hotspot-arcade/.vscode/
 # ESP build output
 esp32/hotspot-arcade-fw/build/
 
+# Bundled ESP firmware images (build artifacts copied in by tools/build-fap.sh).
+# The flash.txt manifest beside them IS committed (source of truth).
+flipper/hotspot-arcade/assets/firmware/*.bin
+
 # Web build output is committed on release, but ignore local node cruft
 web/node_modules/
 

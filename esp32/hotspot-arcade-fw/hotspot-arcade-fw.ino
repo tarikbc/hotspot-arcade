@@ -375,6 +375,9 @@ void loop() {
     if(portalRunning) {
         dnsServer.processNextRequest();
         ws.cleanupClients();
+        ENGINE_LOCK();
+        engine.tick(millis());
+        ENGINE_UNLOCK();
     }
     pumpSerial();
 
@@ -382,6 +385,15 @@ void loop() {
     uint32_t now = millis();
     if(now - lastPing >= 2000) {
         lastPing = now;
-        uartSend(HA_MSG_PING, nullptr, 0);
+        // Identity beacon: magic + version, so the Flipper knows it's our firmware
+        // (and which version), not a different project on the same board.
+        uint8_t beacon[6] = {
+            HA_FW_MAGIC_0,
+            HA_FW_MAGIC_1,
+            HA_FW_MAGIC_2,
+            HA_FW_MAGIC_3,
+            (uint8_t)(HA_FW_VERSION & 0xFF),
+            (uint8_t)(HA_FW_VERSION >> 8)};
+        uartSend(HA_MSG_PING, beacon, sizeof(beacon));
     }
 }

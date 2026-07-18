@@ -8,6 +8,16 @@
 #define HA_SYNC 0xA5
 #define HA_MAX_PAYLOAD 4096
 
+// Firmware identity carried in every PING beacon: a 4-byte project MAGIC so a
+// different project's beacon is never mistaken for ours, and a VERSION so the
+// Flipper can flag an outdated board and offer to update it. Give each project
+// its own MAGIC; bump VERSION whenever the protocol/features change.
+#define HA_FW_MAGIC_0 0x48 // 'H'
+#define HA_FW_MAGIC_1 0x41 // 'A'
+#define HA_FW_MAGIC_2 0x52 // 'R'
+#define HA_FW_MAGIC_3 0x43 // 'C'  ("HARC" = Hotspot ARCade)
+#define HA_FW_VERSION 2
+
 // Flipper -> ESP
 enum {
     HA_MSG_CLEAR_FILES = 0x10,
@@ -40,6 +50,10 @@ enum {
     HA_GAME_NONE = 0,
     HA_GAME_TRIVIA = 1,
     HA_GAME_CONNECT4 = 2,
+    HA_GAME_TICTACTOE = 3,
+    HA_GAME_DOTS = 4,
+    HA_GAME_DRAW = 5,
+    HA_GAME_PONG = 6,
 };
 
 // CRC-8/ATM: poly 0x07, init 0x00, no reflect, no xorout. Identical both sides.

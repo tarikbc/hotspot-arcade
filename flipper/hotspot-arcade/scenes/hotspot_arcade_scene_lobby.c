@@ -7,6 +7,14 @@ static const char* game_name(uint8_t g) {
         return "Trivia";
     case HA_GAME_CONNECT4:
         return "Connect 4";
+    case HA_GAME_TICTACTOE:
+        return "Tic-Tac-Toe";
+    case HA_GAME_DOTS:
+        return "Dots & Boxes";
+    case HA_GAME_DRAW:
+        return "Drawing";
+    case HA_GAME_PONG:
+        return "Pong";
     default:
         return "None";
     }
@@ -24,6 +32,13 @@ static void ha_lobby_button_cb(GuiButtonType result, InputType type, void* conte
     }
 }
 
+// "Install firmware" on the no-board prompt (added for the on-device flasher).
+static void ha_noboard_button_cb(GuiButtonType result, InputType type, void* context) {
+    HotspotArcadeApp* app = context;
+    if(type == InputTypeShort && result == GuiButtonTypeCenter)
+        view_dispatcher_send_custom_event(app->view_dispatcher, HaEventInstallFirmware);
+}
+
 static void ha_status_screen(HotspotArcadeApp* app, const char* l1, const char* l2) {
     widget_reset(app->widget);
     widget_add_string_element(
@@ -34,39 +49,94 @@ static void ha_status_screen(HotspotArcadeApp* app, const char* l1, const char* 
         widget_add_string_element(app->widget, 64, 42, AlignCenter, AlignTop, FontSecondary, l2);
 }
 
+// Map the handshake stage to a label + a 0..100 progress estimate.
+static const char* ha_stage_label(HotspotArcadeApp* app) {
+    switch(app->hs) {
+    case HaHsClear:
+        return "Preparing board...";
+    case HaHsFiles:
+        return "Uploading game...";
+    case HaHsSetAp:
+        return "Naming hotspot...";
+    case HaHsStart:
+        return "Starting hotspot...";
+    default:
+        return "Starting session...";
+    }
+}
+
+static int ha_stage_progress(HotspotArcadeApp* app) {
+    switch(app->hs) {
+    case HaHsClear:
+        return 8;
+    case HaHsFiles: {
+        int n = app->asset_count ? app->asset_count : 1;
+        return 12 + (73 * app->file_idx) / n;
+    }
+    case HaHsSetAp:
+        return 88;
+    case HaHsStart:
+        return 96;
+    case HaHsUp:
+        return 100;
+    default:
+        return 0;
+    }
+}
+
+// Title + a labelled progress bar for the start/reconnect sequence.
+static void ha_progress_screen(HotspotArcadeApp* app) {
+    widget_reset(app->widget);
+    widget_add_string_element(
+        app->widget, 64, 4, AlignCenter, AlignTop, FontPrimary, "Hotspot Arcade");
+    widget_add_line_element(app->widget, 0, 18, 127, 18);
+    widget_add_string_element(
+        app->widget, 64, 25, AlignCenter, AlignTop, FontSecondary, ha_stage_label(app));
+
+    // Bar: a 1px frame with a filled interior proportional to progress.
+    widget_add_frame_element(app->widget, 14, 44, 100, 10, 1);
+    int pct = ha_stage_progress(app);
+    if(pct < 0) pct = 0;
+    if(pct > 100) pct = 100;
+    int w = (96 * pct) / 100;
+    if(w > 0) widget_add_rect_element(app->widget, 16, 46, w, 6, 0, true);
+}
+
 static void ha_dashboard(HotspotArcadeApp* app) {
     widget_reset(app->widget);
     FuriString* tmp = furi_string_alloc();
 
-    widget_add_string_element(
-        app->widget, 64, 1, AlignCenter, AlignTop, FontPrimary, "Hotspot Arcade");
-    widget_add_line_element(app->widget, 0, 13, 127, 13);
+    // Header = the live status (the thing the host most needs to see), with a
+    // filled dot when broadcasting.
+    bool live = app->portal_running && !app->link_lost;
+    const char* state = app->link_lost ? "Reconnecting" : live ? "Broadcasting" : "Starting...";
+    widget_add_circle_element(app->widget, 5, 6, 3, live);
+    widget_add_string_element(app->widget, 13, 0, AlignLeft, AlignTop, FontPrimary, state);
+    widget_add_line_element(app->widget, 0, 14, 127, 14);
 
+    // How players join: the network name, then the address if the captive page
+    // does not pop on its own.
     furi_string_printf(tmp, "Join: %s", furi_string_get_cstr(app->ssid));
     widget_add_string_element(
-        app->widget, 0, 16, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(tmp));
+        app->widget, 0, 18, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(tmp));
+    widget_add_string_element(
+        app->widget, 0, 29, AlignLeft, AlignTop, FontSecondary, "then 192.168.4.1");
 
-    bool live = app->portal_running && !app->link_lost;
-    const char* state = app->link_lost ? "Board disconnected" :
-                        live            ? "Broadcasting" :
-                                          "Starting...";
-    widget_add_circle_element(app->widget, 4, 29, 3, live);
-    widget_add_string_element(app->widget, 12, 26, AlignLeft, AlignTop, FontSecondary, state);
-
+    // Player count (left) and the selected game (right) share one line so nothing
+    // collides with the button row.
     furi_string_printf(tmp, "Players: %d", ha_player_count(app));
     widget_add_string_element(
-        app->widget, 0, 38, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(tmp));
-    furi_string_printf(tmp, "Game: %s", game_name(app->active_game));
+        app->widget, 0, 40, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(tmp));
     widget_add_string_element(
-        app->widget, 0, 48, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(tmp));
+        app->widget, 127, 40, AlignRight, AlignTop, FontSecondary, game_name(app->active_game));
 
     // Left picks the game; Right shows scores; Center hosts the active game
-    // (drive trivia questions, or watch the Connect Four match feed).
+    // (drive trivia questions, or watch the match feed).
     widget_add_button_element(app->widget, GuiButtonTypeLeft, "Games", ha_lobby_button_cb, app);
     if(app->active_game == HA_GAME_TRIVIA) {
         widget_add_button_element(
             app->widget, GuiButtonTypeCenter, "Start", ha_lobby_button_cb, app);
-    } else if(app->active_game == HA_GAME_CONNECT4) {
+    } else if(app->active_game != HA_GAME_NONE) {
         widget_add_button_element(
             app->widget, GuiButtonTypeCenter, "Feed", ha_lobby_button_cb, app);
     }
@@ -82,7 +152,22 @@ static void ha_lobby_render(HotspotArcadeApp* app) {
         return;
     }
     if(strcmp(s, "noboard") == 0) {
-        ha_status_screen(app, "No board detected", "Attach the ESP32 board");
+        // No magic beacon: the board may be attached but running other/no firmware,
+        // or not attached at all. Don't claim "no board" - point at the firmware and
+        // offer to install it (while auto-detection keeps running in the background).
+        ha_status_screen(app, "Firmware needed", "Attach board, install:");
+        widget_add_button_element(
+            app->widget, GuiButtonTypeCenter, "Install fw", ha_noboard_button_cb, app);
+        return;
+    }
+    if(strcmp(s, "outdated") == 0) {
+        // Our board, but older firmware than this app needs: offer to update it.
+        FuriString* l2 = furi_string_alloc();
+        furi_string_printf(l2, "Board v%u, need v%u", app->board_fw_version, HA_FW_VERSION);
+        ha_status_screen(app, "Update firmware?", furi_string_get_cstr(l2));
+        furi_string_free(l2);
+        widget_add_button_element(
+            app->widget, GuiButtonTypeCenter, "Update fw", ha_noboard_button_cb, app);
         return;
     }
     if(app->portal_running || app->link_lost) {
@@ -93,10 +178,7 @@ static void ha_lobby_render(HotspotArcadeApp* app) {
         ha_status_screen(app, "Startup error", s);
         return;
     }
-    FuriString* tmp = furi_string_alloc();
-    furi_string_printf(tmp, "SSID: %s", furi_string_get_cstr(app->ssid));
-    ha_status_screen(app, "Starting session...", furi_string_get_cstr(tmp));
-    furi_string_free(tmp);
+    ha_progress_screen(app);
 }
 
 void hotspot_arcade_scene_lobby_on_enter(void* context) {
@@ -120,9 +202,15 @@ bool hotspot_arcade_scene_lobby_on_event(void* context, SceneManagerEvent event)
     switch(event.event) {
     case HaEventDetectBoard:
         if(ha_board_present(app, 2500)) {
-            furi_string_set(app->status, "starting");
-            ha_lobby_render(app);
-            view_dispatcher_send_custom_event(app->view_dispatcher, HaEventBeginStart);
+            if(app->board_fw_version < HA_FW_VERSION) {
+                // Our board, but running an older firmware version: offer to update.
+                furi_string_set(app->status, "outdated");
+                ha_lobby_render(app);
+            } else {
+                furi_string_set(app->status, "starting");
+                ha_lobby_render(app);
+                view_dispatcher_send_custom_event(app->view_dispatcher, HaEventBeginStart);
+            }
         } else {
             app->awaiting_board = true;
             furi_string_set(app->status, "noboard");
@@ -133,6 +221,13 @@ bool hotspot_arcade_scene_lobby_on_event(void* context, SceneManagerEvent event)
         ha_session_start(app); // blocks while the bundle streams
         ha_lobby_render(app);
         return true;
+    case HaEventInstallFirmware:
+        // Go flash the bundled firmware; on return this scene re-enters, re-detects
+        // the now-flashed board, and continues the start. Stop watching while away.
+        app->awaiting_board = false;
+        furi_string_set(app->flash_manifest, HA_DEFAULT_FW);
+        scene_manager_next_scene(app->scene_manager, HaSceneFlasher);
+        return true;
     case HaEventRefreshView:
         ha_lobby_render(app);
         return true;
@@ -142,7 +237,7 @@ bool hotspot_arcade_scene_lobby_on_event(void* context, SceneManagerEvent event)
     case HaEventHostGame:
         if(app->active_game == HA_GAME_TRIVIA)
             scene_manager_next_scene(app->scene_manager, HaSceneHostTrivia);
-        else if(app->active_game == HA_GAME_CONNECT4)
+        else if(app->active_game != HA_GAME_NONE)
             scene_manager_next_scene(app->scene_manager, HaSceneHostDuel);
         return true;
     case HaEventShowLeaderboard:

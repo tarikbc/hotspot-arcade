@@ -10,11 +10,24 @@
 
 #define HA_MAX_PLAYERS 12
 #define HA_NICK_LEN 20
-#define C4_COLS 7
-#define C4_ROWS 6
-#define C4_CELLS (C4_COLS * C4_ROWS)
-#define C4_MAX_MATCHES 6
-#define C4_MAX_CHALLENGES 16
+
+// Duels (connect4 / tic-tac-toe / dots-and-boxes) share one match + challenge
+// system, parameterized by the active game's kind. Only one game is active at a
+// time, so all live matches are the active kind.
+#define DUEL_MAX_CELLS 42 // c4 = 7x6; ttt = 3x3
+#define DUEL_MAX_MATCHES 6
+#define DUEL_MAX_CHALLENGES 16
+#define DOTS_W 5 // boxes across
+#define DOTS_H 5 // boxes down
+#define DOTS_HEDGES ((DOTS_H + 1) * DOTS_W) // horizontal edges
+#define DOTS_VEDGES (DOTS_H * (DOTS_W + 1)) // vertical edges
+#define DOTS_BOXES (DOTS_W * DOTS_H)
+
+#define DRAW_SECS 70 // per drawing round
+#define DRAW_REVEAL_MS 4000 // reveal pause before the next round
+#define PONG_MAX 4 // concurrent pong matches
+#define PONG_WIN 5 // points to win
+#define PONG_TICK_MS 33 // ~30 Hz
 
 // ---- sinks implemented in the .ino ----
 void haWsSendWs(uint32_t wsId, const String& msg); // to one socket (0 = no-op)
@@ -45,19 +58,49 @@ struct Trivia {
     int counts[4];
 };
 
-struct C4Match {
+struct DuelMatch {
     bool used;
-    uint8_t a, b; // pids; a plays disc 1, b plays disc 2
+    uint8_t kind; // HA_GAME_CONNECT4 / TICTACTOE / DOTS
+    uint8_t a, b; // pids; a plays mark 1, b plays mark 2
     bool aIn, bIn; // still attached (not returned to lobby)
-    uint8_t board[C4_CELLS]; // row-major, index=row*7+col, row 0 top; 0/1/2
     uint8_t turn; // pid to move
     uint8_t phase; // 1 playing, 2 over
     uint8_t winner; // pid, or 0 for draw
+    uint8_t first; // who moved first (rematch alternates it)
+    uint8_t board[DUEL_MAX_CELLS]; // grid games (c4/ttt), row-major; 0/1/2
+    uint8_t hedges[DOTS_HEDGES]; // dots: horizontal edges drawn (0/1)
+    uint8_t vedges[DOTS_VEDGES]; // dots: vertical edges drawn (0/1)
+    uint8_t boxes[DOTS_BOXES]; // dots: box owner (0/1/2)
+    uint8_t sA, sB; // dots: box counts for a / b
 };
 
-struct C4Challenge {
+struct DuelChallenge {
     bool used;
     uint8_t from, to;
+};
+
+struct DrawState {
+    uint8_t phase; // 0 idle, 1 draw, 2 reveal
+    uint8_t drawer; // pid currently drawing
+    uint8_t drawerSeq; // rotates the drawer
+    uint16_t wordSeq; // rotates the word
+    char word[24];
+    int round;
+    uint32_t deadline; // millis (draw end)
+    uint32_t revealUntil; // millis (reveal end)
+    uint8_t winner; // pid who guessed it, or 0
+};
+
+struct PongMatch {
+    bool used;
+    uint8_t a, b; // a = left paddle, b = right paddle
+    bool aIn, bIn;
+    uint8_t phase; // 1 playing, 2 over
+    float bx, by, vx, vy; // ball position (0..1) + velocity per tick
+    float p1, p2; // paddle centers (0..1)
+    int8_t d1, d2; // paddle move dir (-1/0/1)
+    uint8_t s1, s2; // scores
+    uint8_t winner; // pid
 };
 
 class Engine {
@@ -66,7 +109,9 @@ public:
         for(int i = 0; i <= HA_MAX_PLAYERS; i++) _p[i] = Player{};
         _active = HA_GAME_NONE;
         triviaClear();
-        c4Clear();
+        duelClear();
+        drawClear();
+        pongClear();
     }
 
     // ---- roster ----
@@ -80,7 +125,7 @@ public:
     void onWsDisconnect(uint32_t wsId) {
         uint8_t pid = pidByWs(wsId);
         if(!pid) return;
-        c4OnLeave(pid); // forfeit any active match
+        anyOnLeave(pid); // forfeit any active match
         _p[pid] = Player{};
         haUartLeave(pid);
         pushAll();
@@ -109,7 +154,9 @@ public:
     void selectGame(uint8_t id) {
         _active = id;
         triviaClear();
-        c4Clear();
+        duelClear();
+        drawClear();
+        pongClear();
         pushAll();
     }
 
@@ -140,7 +187,7 @@ public:
         }
         for(int k = 0; k < 4; k++) t.counts[k] = 0;
         pushAll();
-        haUartEvent(String("{\"answers\":0,\"total\":") + connectedCount() + "}");
+        emitTriviaEvent(0);
     }
 
     void reveal() {
@@ -165,12 +212,25 @@ public:
     }
 
     void roundEnd() {
-        if(_active == HA_GAME_TRIVIA) {
+        if(_active == HA_GAME_TRIVIA)
             triviaClear();
-        } else if(_active == HA_GAME_CONNECT4) {
-            c4Clear();
-        }
+        else if(isDuel(_active))
+            duelClear();
+        else if(_active == HA_GAME_DRAW)
+            drawClear();
+        else if(_active == HA_GAME_PONG)
+            pongClear();
         pushAll();
+    }
+
+    // Time-based updates (drawing round timers, pong physics). Called from loop().
+    void tick(uint32_t now) {
+        if(_active == HA_GAME_DRAW)
+            drawTick(now);
+        else if(_active == HA_GAME_PONG && (now - _lastPong) >= PONG_TICK_MS) {
+            _lastPong = now;
+            pongTick();
+        }
     }
 
     // ---- player input (parsed WS JSON) ----
@@ -193,15 +253,26 @@ public:
         if(strcmp(type, "answer") == 0 && ha_json_int(json, "c", &v)) {
             triviaAnswer(pid, v);
         } else if(strcmp(type, "challenge") == 0 && ha_json_int(json, "to", &v)) {
-            c4Challenge(pid, (uint8_t)v);
+            matchChallenge(pid, (uint8_t)v);
         } else if(strcmp(type, "accept") == 0 && ha_json_int(json, "from", &v)) {
-            c4Accept(pid, (uint8_t)v);
+            matchAccept(pid, (uint8_t)v);
         } else if(strcmp(type, "cancel") == 0) {
-            c4Cancel(pid);
-        } else if(strcmp(type, "move") == 0 && ha_json_int(json, "col", &v)) {
-            c4Move(pid, v);
+            duelCancel(pid);
+        } else if(strcmp(type, "move") == 0 && ha_json_int(json, "n", &v)) {
+            duelMove(pid, v);
+        } else if(strcmp(type, "rematch") == 0) {
+            duelRematch(pid);
+        } else if(strcmp(type, "paddle") == 0 && ha_json_int(json, "dir", &v)) {
+            pongPaddle(pid, v);
+        } else if(strcmp(type, "guess") == 0) {
+            char g[64];
+            if(ha_json_str(json, "text", g, sizeof(g))) drawGuess(pid, g);
+        } else if(strcmp(type, "stroke") == 0) {
+            drawStroke(pid, json);
+        } else if(strcmp(type, "clear") == 0) {
+            drawClearInk(pid);
         } else if(strcmp(type, "leaveGame") == 0) {
-            c4OnLeave(pid);
+            anyOnLeave(pid);
             pushAll();
         }
     }
@@ -210,8 +281,11 @@ private:
     Player _p[HA_MAX_PLAYERS + 1] = {};
     uint8_t _active = HA_GAME_NONE;
     Trivia _t = {};
-    C4Match _m[C4_MAX_MATCHES] = {};
-    C4Challenge _c[C4_MAX_CHALLENGES] = {};
+    DuelMatch _m[DUEL_MAX_MATCHES] = {};
+    DuelChallenge _c[DUEL_MAX_CHALLENGES] = {};
+    DrawState _d = {};
+    PongMatch _pm[PONG_MAX] = {};
+    uint32_t _lastPong = 0;
 
     uint8_t freePid() {
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
@@ -233,8 +307,12 @@ private:
             haWsSendWs(_p[pid].wsId, lob);
             if(_active == HA_GAME_TRIVIA)
                 haWsSendWs(_p[pid].wsId, triviaJson(pid));
-            else if(_active == HA_GAME_CONNECT4)
-                haWsSendWs(_p[pid].wsId, c4Json(pid));
+            else if(isDuel(_active))
+                haWsSendWs(_p[pid].wsId, duelJson(pid));
+            else if(_active == HA_GAME_DRAW)
+                haWsSendWs(_p[pid].wsId, drawJson(pid));
+            else if(_active == HA_GAME_PONG)
+                haWsSendWs(_p[pid].wsId, pongJson(pid));
         }
     }
 
@@ -257,11 +335,32 @@ private:
         return s;
     }
 
+    static const char* gameName(uint8_t g) {
+        switch(g) {
+        case HA_GAME_TRIVIA:
+            return "trivia";
+        case HA_GAME_CONNECT4:
+            return "connect4";
+        case HA_GAME_TICTACTOE:
+            return "tictactoe";
+        case HA_GAME_DOTS:
+            return "dots";
+        case HA_GAME_DRAW:
+            return "draw";
+        case HA_GAME_PONG:
+            return "pong";
+        default:
+            return "none";
+        }
+    }
+
     String lobbyJson() {
-        const char* g = _active == HA_GAME_TRIVIA ? "trivia" :
-                        _active == HA_GAME_CONNECT4 ? "connect4" :
-                                                      "none";
-        return String("{\"t\":\"lobby\",\"game\":\"") + g + "\",\"players\":" + playersJson() + "}";
+        return String("{\"t\":\"lobby\",\"game\":\"") + gameName(_active) +
+               "\",\"players\":" + playersJson() + "}";
+    }
+
+    static bool isDuel(uint8_t g) {
+        return g == HA_GAME_CONNECT4 || g == HA_GAME_TICTACTOE || g == HA_GAME_DOTS;
     }
 
     // ---------- trivia ----------
@@ -323,8 +422,16 @@ private:
         int answered = 0;
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
             if(_p[i].used && _t.answer[i] >= 0) answered++;
-        haUartEvent(String("{\"answers\":") + answered + ",\"total\":" + connectedCount() + "}");
+        emitTriviaEvent(answered);
         pushAll();
+    }
+
+    // Host-facing live tally: answered/total plus per-option counts (for bars).
+    void emitTriviaEvent(int answered) {
+        String ev = String("{\"answers\":") + answered + ",\"total\":" + connectedCount() +
+                    ",\"counts\":[" + _t.counts[0] + "," + _t.counts[1] + "," + _t.counts[2] + "," +
+                    _t.counts[3] + "]}";
+        haUartEvent(ev);
     }
 
     String triviaJson(uint8_t pid) {
@@ -363,14 +470,33 @@ private:
         return s;
     }
 
-    // ---------- connect4 ----------
-    void c4Clear() {
-        for(int i = 0; i < C4_MAX_MATCHES; i++) _m[i] = C4Match{};
-        for(int i = 0; i < C4_MAX_CHALLENGES; i++) _c[i] = C4Challenge{};
+    // ---------- duels (connect4 / tic-tac-toe / dots) ----------
+    void duelClear() {
+        for(int i = 0; i < DUEL_MAX_MATCHES; i++) _m[i] = DuelMatch{};
+        for(int i = 0; i < DUEL_MAX_CHALLENGES; i++) _c[i] = DuelChallenge{};
     }
 
-    C4Match* matchOf(uint8_t pid) {
-        for(int i = 0; i < C4_MAX_MATCHES; i++) {
+    static const char* kindStr(uint8_t kind) {
+        return kind == HA_GAME_TICTACTOE ? "ttt" : kind == HA_GAME_DOTS ? "dots" : "c4";
+    }
+
+    // Grid params for c4/ttt.
+    static void gridParams(uint8_t kind, int& cols, int& rows, int& need, bool& gravity) {
+        if(kind == HA_GAME_TICTACTOE) {
+            cols = 3;
+            rows = 3;
+            need = 3;
+            gravity = false;
+        } else { // connect4
+            cols = 7;
+            rows = 6;
+            need = 4;
+            gravity = true;
+        }
+    }
+
+    DuelMatch* matchOf(uint8_t pid) {
+        for(int i = 0; i < DUEL_MAX_MATCHES; i++) {
             if(!_m[i].used) continue;
             if(_m[i].a == pid && _m[i].aIn) return &_m[i];
             if(_m[i].b == pid && _m[i].bIn) return &_m[i];
@@ -378,21 +504,25 @@ private:
         return nullptr;
     }
 
-    void c4RemoveChallengesInvolving(uint8_t pid) {
-        for(int i = 0; i < C4_MAX_CHALLENGES; i++)
-            if(_c[i].used && (_c[i].from == pid || _c[i].to == pid)) _c[i] = C4Challenge{};
+    void duelRemoveChallengesInvolving(uint8_t pid) {
+        for(int i = 0; i < DUEL_MAX_CHALLENGES; i++)
+            if(_c[i].used && (_c[i].from == pid || _c[i].to == pid)) _c[i] = DuelChallenge{};
     }
 
-    void c4Challenge(uint8_t from, uint8_t to) {
-        if(_active != HA_GAME_CONNECT4) return;
+    // Challenge/accept are shared by all 1v1 games (duels + pong).
+    bool isMatchGame() { return isDuel(_active) || _active == HA_GAME_PONG; }
+    bool inAnyMatch(uint8_t pid) { return matchOf(pid) || pongMatchOf(pid); }
+
+    void matchChallenge(uint8_t from, uint8_t to) {
+        if(!isMatchGame()) return;
         if(to == from || to < 1 || to > HA_MAX_PLAYERS || !_p[to].used) return;
-        if(matchOf(from) || matchOf(to)) return;
+        if(inAnyMatch(from) || inAnyMatch(to)) return;
         // one outstanding challenge per challenger
-        for(int i = 0; i < C4_MAX_CHALLENGES; i++)
-            if(_c[i].used && _c[i].from == from) _c[i] = C4Challenge{};
-        for(int i = 0; i < C4_MAX_CHALLENGES; i++) {
+        for(int i = 0; i < DUEL_MAX_CHALLENGES; i++)
+            if(_c[i].used && _c[i].from == from) _c[i] = DuelChallenge{};
+        for(int i = 0; i < DUEL_MAX_CHALLENGES; i++) {
             if(!_c[i].used) {
-                _c[i] = C4Challenge{true, from, to};
+                _c[i] = DuelChallenge{true, from, to};
                 break;
             }
         }
@@ -404,74 +534,156 @@ private:
         pushAll();
     }
 
-    void c4Accept(uint8_t pid, uint8_t from) {
-        if(_active != HA_GAME_CONNECT4) return;
+    // Set up a fresh match between a (mark 1) and b (mark 2); `first` moves first.
+    void duelStart(DuelMatch* m, uint8_t a, uint8_t b, uint8_t first) {
+        *m = DuelMatch{};
+        m->used = true;
+        m->kind = _active;
+        m->a = a;
+        m->b = b;
+        m->aIn = m->bIn = true;
+        m->turn = first;
+        m->first = first;
+        m->phase = 1;
+        m->winner = 0;
+    }
+
+    void matchAccept(uint8_t pid, uint8_t from) {
+        if(!isMatchGame()) return;
         bool found = false;
-        for(int i = 0; i < C4_MAX_CHALLENGES; i++)
+        for(int i = 0; i < DUEL_MAX_CHALLENGES; i++)
             if(_c[i].used && _c[i].from == from && _c[i].to == pid) found = true;
         if(!found) return;
-        if(matchOf(pid) || matchOf(from)) return;
-        for(int i = 0; i < C4_MAX_MATCHES; i++) {
-            if(!_m[i].used) {
-                _m[i] = C4Match{};
-                _m[i].used = true;
-                _m[i].a = from;
-                _m[i].b = pid;
-                _m[i].aIn = _m[i].bIn = true;
-                memset(_m[i].board, 0, sizeof(_m[i].board));
-                _m[i].turn = from; // challenger moves first
-                _m[i].phase = 1;
-                _m[i].winner = 0;
-                break;
-            }
+        if(inAnyMatch(pid) || inAnyMatch(from)) return;
+        if(_active == HA_GAME_PONG) {
+            for(int i = 0; i < PONG_MAX; i++)
+                if(!_pm[i].used) {
+                    pongStart(&_pm[i], from, pid);
+                    break;
+                }
+        } else {
+            for(int i = 0; i < DUEL_MAX_MATCHES; i++)
+                if(!_m[i].used) {
+                    duelStart(&_m[i], from, pid, from); // challenger moves first
+                    break;
+                }
         }
-        c4RemoveChallengesInvolving(pid);
-        c4RemoveChallengesInvolving(from);
+        duelRemoveChallengesInvolving(pid);
+        duelRemoveChallengesInvolving(from);
+        const char* key = (_active == HA_GAME_PONG) ? "pong" : "duel";
         haUartEvent(
-            String("{\"c4\":\"") + ha_json_escape(_p[from].nick) + " vs " +
+            String("{\"") + key + "\":\"" + ha_json_escape(_p[from].nick) + " vs " +
             ha_json_escape(_p[pid].nick) + "\"}");
         pushAll();
     }
 
-    void c4Cancel(uint8_t pid) {
-        c4RemoveChallengesInvolving(pid);
+    void anyOnLeave(uint8_t pid) {
+        duelOnLeave(pid);
+        pongOnLeave(pid);
+    }
+
+    void duelCancel(uint8_t pid) {
+        duelRemoveChallengesInvolving(pid);
         pushAll();
     }
 
-    void c4Move(uint8_t pid, int col) {
-        C4Match* m = matchOf(pid);
+    // Rematch: in an over match, restart the same pairing with the first move
+    // alternated. Only if the opponent is still attached.
+    void duelRematch(uint8_t pid) {
+        DuelMatch* m = matchOf(pid);
+        if(!m || m->phase != 2) return;
+        if(!m->aIn || !m->bIn) return; // opponent left
+        uint8_t next = (m->first == m->a) ? m->b : m->a;
+        duelStart(m, m->a, m->b, next);
+        pushAll();
+    }
+
+    void duelMove(uint8_t pid, int n) {
+        DuelMatch* m = matchOf(pid);
         if(!m || m->phase != 1 || m->turn != pid) return;
-        if(col < 0 || col >= C4_COLS) return;
-        int row = -1;
-        for(int r = C4_ROWS - 1; r >= 0; r--) {
-            if(m->board[r * C4_COLS + col] == 0) {
-                row = r;
-                break;
-            }
-        }
-        if(row < 0) return; // column full
-        uint8_t disc = (pid == m->a) ? 1 : 2;
-        m->board[row * C4_COLS + col] = disc;
-        if(c4Wins(m->board, row, col, disc)) {
-            c4Finish(m, pid);
-        } else if(c4Full(m->board)) {
-            c4Finish(m, 0);
-        } else {
-            m->turn = (pid == m->a) ? m->b : m->a;
-        }
+        uint8_t mark = (pid == m->a) ? 1 : 2;
+        if(m->kind == HA_GAME_DOTS)
+            dotsMove(m, pid, n, mark);
+        else
+            gridMove(m, pid, n, mark);
         pushAll();
     }
 
-    void c4Finish(C4Match* m, uint8_t winnerPid) {
+    void gridMove(DuelMatch* m, uint8_t pid, int n, uint8_t mark) {
+        int cols, rows, need;
+        bool gravity;
+        gridParams(m->kind, cols, rows, need, gravity);
+        int row, col;
+        if(gravity) {
+            col = n;
+            if(col < 0 || col >= cols) return;
+            row = -1;
+            for(int r = rows - 1; r >= 0; r--)
+                if(m->board[r * cols + col] == 0) {
+                    row = r;
+                    break;
+                }
+            if(row < 0) return; // column full
+        } else {
+            if(n < 0 || n >= cols * rows) return;
+            if(m->board[n] != 0) return; // cell taken
+            row = n / cols;
+            col = n % cols;
+        }
+        m->board[row * cols + col] = mark;
+        if(gridWins(m->board, cols, rows, need, row, col, mark))
+            duelFinish(m, pid);
+        else if(gridFull(m->board, cols, rows))
+            duelFinish(m, 0);
+        else
+            m->turn = (pid == m->a) ? m->b : m->a;
+    }
+
+    void dotsMove(DuelMatch* m, uint8_t pid, int n, uint8_t mark) {
+        if(n < 0 || n >= DOTS_HEDGES + DOTS_VEDGES) return;
+        if(n < DOTS_HEDGES) {
+            if(m->hedges[n]) return;
+            m->hedges[n] = 1;
+        } else {
+            int vi = n - DOTS_HEDGES;
+            if(m->vedges[vi]) return;
+            m->vedges[vi] = 1;
+        }
+        bool claimed = false;
+        for(int r = 0; r < DOTS_H; r++)
+            for(int c = 0; c < DOTS_W; c++) {
+                int bi = r * DOTS_W + c;
+                if(m->boxes[bi]) continue;
+                if(dotsBoxComplete(m, r, c)) {
+                    m->boxes[bi] = mark;
+                    if(mark == 1)
+                        m->sA++;
+                    else
+                        m->sB++;
+                    claimed = true;
+                }
+            }
+        if(m->sA + m->sB >= DOTS_BOXES) {
+            uint8_t w = (m->sA > m->sB) ? m->a : (m->sB > m->sA) ? m->b : 0;
+            duelFinish(m, w);
+        } else if(!claimed) {
+            m->turn = (pid == m->a) ? m->b : m->a; // completing a box grants another turn
+        }
+    }
+
+    static bool dotsBoxComplete(const DuelMatch* m, int r, int c) {
+        return m->hedges[r * DOTS_W + c] && m->hedges[(r + 1) * DOTS_W + c] &&
+               m->vedges[r * (DOTS_W + 1) + c] && m->vedges[r * (DOTS_W + 1) + c + 1];
+    }
+
+    void duelFinish(DuelMatch* m, uint8_t winnerPid) {
         if(m->phase != 1) return;
         m->phase = 2;
         m->winner = winnerPid;
-        uint8_t loser = 0;
-        if(winnerPid == m->a) loser = m->b;
-        else if(winnerPid == m->b) loser = m->a;
+        uint8_t loser = (winnerPid == m->a) ? m->b : (winnerPid == m->b) ? m->a : 0;
         if(winnerPid) {
             _p[winnerPid].score += 300;
-            haUartScore(winnerPid, 300, "c4win");
+            haUartScore(winnerPid, 300, "duelwin");
             haUartRoundResult(String("{\"win\":") + winnerPid + ",\"lose\":" + loser + "}");
         } else {
             haUartRoundResult(String("{\"draw\":[") + m->a + "," + m->b + "]}");
@@ -479,48 +691,49 @@ private:
     }
 
     // A player returns to lobby or disconnects. Forfeit a live match to opponent.
-    void c4OnLeave(uint8_t pid) {
-        C4Match* m = matchOf(pid);
+    void duelOnLeave(uint8_t pid) {
+        DuelMatch* m = matchOf(pid);
         if(!m) return;
         uint8_t opp = (pid == m->a) ? m->b : m->a;
-        if(m->phase == 1) c4Finish(m, opp); // forfeit
+        if(m->phase == 1) duelFinish(m, opp); // forfeit
         if(pid == m->a) m->aIn = false;
         if(pid == m->b) m->bIn = false;
-        if(!m->aIn && !m->bIn) *m = C4Match{}; // both gone: free the slot
+        if(!m->aIn && !m->bIn) *m = DuelMatch{}; // both gone: free the slot
     }
 
-    static bool c4Full(const uint8_t* b) {
-        for(int c = 0; c < C4_COLS; c++)
-            if(b[c] == 0) return false; // top row cell empty -> not full
+    static bool gridFull(const uint8_t* b, int cols, int rows) {
+        for(int i = 0; i < cols * rows; i++)
+            if(b[i] == 0) return false;
         return true;
     }
 
-    static bool c4Wins(const uint8_t* b, int row, int col, uint8_t disc) {
+    static bool
+        gridWins(const uint8_t* b, int cols, int rows, int need, int row, int col, uint8_t disc) {
         static const int dr[4] = {0, 1, 1, 1};
         static const int dc[4] = {1, 0, 1, -1};
         for(int d = 0; d < 4; d++) {
             int cnt = 1;
-            for(int s = 1; s <= 3; s++) {
+            for(int s = 1; s < need; s++) {
                 int r = row + dr[d] * s, c = col + dc[d] * s;
-                if(r < 0 || r >= C4_ROWS || c < 0 || c >= C4_COLS) break;
-                if(b[r * C4_COLS + c] != disc) break;
+                if(r < 0 || r >= rows || c < 0 || c >= cols) break;
+                if(b[r * cols + c] != disc) break;
                 cnt++;
             }
-            for(int s = 1; s <= 3; s++) {
+            for(int s = 1; s < need; s++) {
                 int r = row - dr[d] * s, c = col - dc[d] * s;
-                if(r < 0 || r >= C4_ROWS || c < 0 || c >= C4_COLS) break;
-                if(b[r * C4_COLS + c] != disc) break;
+                if(r < 0 || r >= rows || c < 0 || c >= cols) break;
+                if(b[r * cols + c] != disc) break;
                 cnt++;
             }
-            if(cnt >= 4) return true;
+            if(cnt >= need) return true;
         }
         return false;
     }
 
-    String c4ChallengesJson() {
+    String duelChallengesJson() {
         String s = "[";
         bool first = true;
-        for(int i = 0; i < C4_MAX_CHALLENGES; i++) {
+        for(int i = 0; i < DUEL_MAX_CHALLENGES; i++) {
             if(!_c[i].used) continue;
             if(!first) s += ",";
             s += "{\"from\":";
@@ -534,32 +747,381 @@ private:
         return s;
     }
 
-    String c4Json(uint8_t pid) {
-        C4Match* m = matchOf(pid);
-        if(!m) {
-            return String("{\"t\":\"c4\",\"phase\":\"lobby\",\"challenges\":") + c4ChallengesJson() +
-                   "}";
+    static String intArray(const uint8_t* a, int n) {
+        String s = "[";
+        for(int i = 0; i < n; i++) {
+            if(i) s += ",";
+            s += a[i];
         }
+        s += "]";
+        return s;
+    }
+
+    String duelJson(uint8_t pid) {
+        DuelMatch* m = matchOf(pid);
+        const char* kind = kindStr(_active);
+        if(!m) {
+            return String("{\"t\":\"duel\",\"kind\":\"") + kind +
+                   "\",\"phase\":\"lobby\",\"challenges\":" + duelChallengesJson() + "}";
+        }
+        kind = kindStr(m->kind);
         uint8_t opp = (pid == m->a) ? m->b : m->a;
         uint8_t me = (pid == m->a) ? 1 : 2;
-        String s = "{\"t\":\"c4\",\"phase\":\"";
-        s += (m->phase == 2) ? "over" : "playing";
-        s += "\",\"board\":[";
-        for(int i = 0; i < C4_CELLS; i++) {
-            if(i) s += ",";
-            s += m->board[i];
+        const char* phase = (m->phase == 2) ? "over" : "playing";
+        String s = String("{\"t\":\"duel\",\"kind\":\"") + kind + "\",\"phase\":\"" + phase +
+                   "\",\"turn\":" + m->turn + ",\"me\":" + me + ",\"you\":" + pid + ",\"opp\":\"" +
+                   ha_json_escape(_p[opp].nick) + "\"";
+        if(m->kind == HA_GAME_DOTS) {
+            s += ",\"w\":";
+            s += DOTS_W;
+            s += ",\"h\":";
+            s += DOTS_H;
+            s += ",\"hedges\":" + intArray(m->hedges, DOTS_HEDGES);
+            s += ",\"vedges\":" + intArray(m->vedges, DOTS_VEDGES);
+            s += ",\"boxes\":" + intArray(m->boxes, DOTS_BOXES);
+            s += ",\"sme\":";
+            s += (me == 1) ? m->sA : m->sB;
+            s += ",\"sopp\":";
+            s += (me == 1) ? m->sB : m->sA;
+        } else {
+            int cols, rows, need;
+            bool gravity;
+            gridParams(m->kind, cols, rows, need, gravity);
+            s += ",\"cols\":";
+            s += cols;
+            s += ",\"rows\":";
+            s += rows;
+            s += ",\"need\":";
+            s += need;
+            s += ",\"gravity\":";
+            s += gravity ? "true" : "false";
+            s += ",\"board\":" + intArray(m->board, cols * rows);
         }
-        s += "],\"turn\":";
-        s += m->turn;
-        s += ",\"me\":";
-        s += me;
-        s += ",\"you\":";
-        s += pid;
-        s += ",\"opp\":\"";
-        s += ha_json_escape(_p[opp].nick);
-        s += "\"";
         if(m->phase == 2) {
             const char* r = (m->winner == 0) ? "draw" : (m->winner == pid) ? "win" : "lose";
+            s += ",\"result\":\"";
+            s += r;
+            s += "\"";
+        }
+        s += "}";
+        return s;
+    }
+
+    // ---------- drawing + guessing ----------
+    static const char* drawWord(int i) {
+        static const char* words[] = {
+            "apple",  "house",  "car",   "tree",  "cat",     "dog",    "sun",   "star",
+            "boat",   "fish",   "clock", "flower", "book",   "phone",  "chair", "heart",
+            "cloud",  "key",    "shoe",  "smile", "pizza",   "robot",  "ghost", "snake",
+            "crown",  "guitar", "rocket", "cake",  "moon",   "ladder"};
+        const int n = sizeof(words) / sizeof(words[0]);
+        return words[((i % n) + n) % n];
+    }
+
+    void drawClear() { _d = DrawState{}; }
+
+    void drawStart(uint32_t now) {
+        int used = connectedCount();
+        if(used < 2) {
+            _d.phase = 0;
+            pushAll();
+            return;
+        }
+        _d.drawerSeq++;
+        int target = _d.drawerSeq % used, i = 0;
+        uint8_t drawer = 0;
+        for(uint8_t pid = 1; pid <= HA_MAX_PLAYERS; pid++)
+            if(_p[pid].used) {
+                if(i == target) {
+                    drawer = pid;
+                    break;
+                }
+                i++;
+            }
+        if(!drawer) {
+            _d.phase = 0;
+            return;
+        }
+        _d.drawer = drawer;
+        strlcpy(_d.word, drawWord(_d.wordSeq++), sizeof(_d.word));
+        _d.phase = 1;
+        _d.round++;
+        _d.winner = 0;
+        _d.deadline = now + (uint32_t)DRAW_SECS * 1000;
+        haWsBroadcast("{\"t\":\"ink\",\"clear\":true}");
+        pushAll();
+        haUartEvent(String("{\"draw\":\"") + ha_json_escape(_p[drawer].nick) + " drawing\"}");
+    }
+
+    void drawReveal(uint32_t now, uint8_t winner) {
+        _d.phase = 2;
+        _d.winner = winner;
+        _d.revealUntil = now + DRAW_REVEAL_MS;
+        pushAll();
+    }
+
+    void drawTick(uint32_t now) {
+        if(_d.phase == 0) {
+            if(connectedCount() >= 2) drawStart(now);
+        } else if(_d.phase == 1) {
+            if(!_p[_d.drawer].used || now > _d.deadline) drawReveal(now, 0);
+        } else if(_d.phase == 2) {
+            if(now > _d.revealUntil) drawStart(now);
+        }
+    }
+
+    static bool wordMatch(const char* a, const char* b) {
+        while(*a == ' ') a++;
+        while(*b == ' ') b++;
+        while(*a && *b) {
+            char ca = *a, cb = *b;
+            if(ca >= 'A' && ca <= 'Z') ca += 32;
+            if(cb >= 'A' && cb <= 'Z') cb += 32;
+            if(ca != cb) return false;
+            a++;
+            b++;
+        }
+        while(*a == ' ') a++;
+        return *a == '\0' && *b == '\0';
+    }
+
+    void drawGuess(uint8_t pid, const char* text) {
+        if(_active != HA_GAME_DRAW || _d.phase != 1 || pid == _d.drawer) return;
+        if(wordMatch(text, _d.word)) {
+            _p[pid].score += 200;
+            haUartScore(pid, 200, "draw");
+            if(_p[_d.drawer].used) {
+                _p[_d.drawer].score += 100;
+                haUartScore(_d.drawer, 100, "drawn");
+            }
+            haUartRoundResult(String("{\"draw\":\"") + ha_json_escape(_p[pid].nick) + " got it\"}");
+            drawReveal(millis(), pid);
+        } else {
+            haWsBroadcast(
+                String("{\"t\":\"chat\",\"nick\":\"") + ha_json_escape(_p[pid].nick) +
+                "\",\"text\":\"" + ha_json_escape(text) + "\"}");
+        }
+    }
+
+    static bool jsonNum(const char* s, const char* key, char* out, size_t n) {
+        const char* q = ha_json_find(s, key);
+        if(!q) return false;
+        size_t i = 0;
+        while(*q && (isdigit((unsigned char)*q) || *q == '.' || *q == '-' || *q == '+' ||
+                     *q == 'e' || *q == 'E') &&
+              i < n - 1)
+            out[i++] = *q++;
+        out[i] = '\0';
+        return i > 0;
+    }
+
+    // Relay the drawer's stroke to every other client as an "ink" message.
+    void drawStroke(uint8_t pid, const char* json) {
+        if(_active != HA_GAME_DRAW || _d.phase != 1 || pid != _d.drawer) return;
+        String ink = "{\"t\":\"ink\"";
+        static const char* keys[4] = {"x0", "y0", "x1", "y1"};
+        char num[16];
+        for(int k = 0; k < 4; k++)
+            if(jsonNum(json, keys[k], num, sizeof(num))) {
+                ink += ",\"";
+                ink += keys[k];
+                ink += "\":";
+                ink += num;
+            }
+        ink += "}";
+        for(uint8_t p = 1; p <= HA_MAX_PLAYERS; p++)
+            if(_p[p].used && _p[p].wsId && p != _d.drawer) haWsSendWs(_p[p].wsId, ink);
+    }
+
+    void drawClearInk(uint8_t pid) {
+        if(_active != HA_GAME_DRAW || pid != _d.drawer) return;
+        for(uint8_t p = 1; p <= HA_MAX_PLAYERS; p++)
+            if(_p[p].used && _p[p].wsId && p != _d.drawer)
+                haWsSendWs(_p[p].wsId, "{\"t\":\"ink\",\"clear\":true}");
+    }
+
+    String drawJson(uint8_t pid) {
+        String s = "{\"t\":\"draw\",\"phase\":\"";
+        s += _d.phase == 1 ? "draw" : _d.phase == 2 ? "reveal" : "idle";
+        s += "\"";
+        if(_d.phase != 0) {
+            s += ",\"round\":";
+            s += _d.round;
+            if(_d.phase == 2) {
+                s += ",\"word\":\"";
+                s += ha_json_escape(_d.word);
+                s += "\",\"winner\":";
+                if(_d.winner)
+                    s += _d.winner;
+                else
+                    s += "null";
+            } else if(pid == _d.drawer) {
+                s += ",\"role\":\"drawer\",\"word\":\"";
+                s += ha_json_escape(_d.word);
+                s += "\",\"drawer\":";
+                s += _d.drawer;
+            } else {
+                s += ",\"role\":\"guesser\",\"len\":";
+                s += (int)strlen(_d.word);
+                s += ",\"drawer\":\"";
+                s += ha_json_escape(_p[_d.drawer].nick);
+                s += "\"";
+            }
+        }
+        s += ",\"scores\":" + playersJson() + "}";
+        return s;
+    }
+
+    // ---------- pong ----------
+    void pongClear() {
+        for(int i = 0; i < PONG_MAX; i++) _pm[i] = PongMatch{};
+    }
+
+    PongMatch* pongMatchOf(uint8_t pid) {
+        for(int i = 0; i < PONG_MAX; i++) {
+            if(!_pm[i].used) continue;
+            if(_pm[i].a == pid && _pm[i].aIn) return &_pm[i];
+            if(_pm[i].b == pid && _pm[i].bIn) return &_pm[i];
+        }
+        return nullptr;
+    }
+
+    void pongServe(PongMatch* m, int dir) {
+        m->bx = 0.5f;
+        m->by = 0.5f;
+        m->p1 = 0.5f;
+        m->p2 = 0.5f;
+        m->vx = dir > 0 ? 0.018f : -0.018f;
+        m->vy = 0.010f;
+        m->d1 = 0;
+        m->d2 = 0;
+    }
+
+    void pongStart(PongMatch* m, uint8_t a, uint8_t b) {
+        *m = PongMatch{};
+        m->used = true;
+        m->a = a;
+        m->b = b;
+        m->aIn = m->bIn = true;
+        m->phase = 1;
+        pongServe(m, 1);
+    }
+
+    void pongPaddle(uint8_t pid, int dir) {
+        PongMatch* m = pongMatchOf(pid);
+        if(!m || m->phase != 1) return;
+        if(dir < -1) dir = -1;
+        if(dir > 1) dir = 1;
+        if(pid == m->a)
+            m->d1 = (int8_t)dir;
+        else
+            m->d2 = (int8_t)dir;
+    }
+
+    void pongFinish(PongMatch* m, uint8_t winner) {
+        if(m->phase != 1) return;
+        m->phase = 2;
+        m->winner = winner;
+        uint8_t loser = (winner == m->a) ? m->b : m->a;
+        _p[winner].score += 300;
+        haUartScore(winner, 300, "pongwin");
+        haUartRoundResult(String("{\"win\":") + winner + ",\"lose\":" + loser + "}");
+    }
+
+    void pongOnLeave(uint8_t pid) {
+        PongMatch* m = pongMatchOf(pid);
+        if(!m) return;
+        uint8_t opp = (pid == m->a) ? m->b : m->a;
+        if(m->phase == 1) pongFinish(m, opp);
+        if(pid == m->a) m->aIn = false;
+        if(pid == m->b) m->bIn = false;
+        if(!m->aIn && !m->bIn) *m = PongMatch{};
+    }
+
+    void pongTick() {
+        const float PADHALF = 0.11f, PSPEED = 0.03f;
+        for(int i = 0; i < PONG_MAX; i++) {
+            PongMatch* m = &_pm[i];
+            if(!m->used || m->phase != 1) continue;
+            m->p1 += m->d1 * PSPEED;
+            m->p2 += m->d2 * PSPEED;
+            if(m->p1 < PADHALF) m->p1 = PADHALF;
+            if(m->p1 > 1 - PADHALF) m->p1 = 1 - PADHALF;
+            if(m->p2 < PADHALF) m->p2 = PADHALF;
+            if(m->p2 > 1 - PADHALF) m->p2 = 1 - PADHALF;
+            m->bx += m->vx;
+            m->by += m->vy;
+            if(m->by < 0) {
+                m->by = 0;
+                m->vy = -m->vy;
+            }
+            if(m->by > 1) {
+                m->by = 1;
+                m->vy = -m->vy;
+            }
+            if(m->bx <= 0.05f) {
+                if(fabsf(m->by - m->p1) <= PADHALF) {
+                    m->bx = 0.05f;
+                    m->vx = -m->vx;
+                    m->vy += (m->by - m->p1) * 0.05f;
+                } else {
+                    m->s2++;
+                    if(m->s2 >= PONG_WIN)
+                        pongFinish(m, m->b);
+                    else
+                        pongServe(m, 1);
+                }
+            }
+            if(m->phase == 1 && m->bx >= 0.95f) {
+                if(fabsf(m->by - m->p2) <= PADHALF) {
+                    m->bx = 0.95f;
+                    m->vx = -m->vx;
+                    m->vy += (m->by - m->p2) * 0.05f;
+                } else {
+                    m->s1++;
+                    if(m->s1 >= PONG_WIN)
+                        pongFinish(m, m->a);
+                    else
+                        pongServe(m, -1);
+                }
+            }
+            if(_p[m->a].wsId) haWsSendWs(_p[m->a].wsId, pongJson(m->a));
+            if(_p[m->b].wsId) haWsSendWs(_p[m->b].wsId, pongJson(m->b));
+        }
+    }
+
+    static String pongF(float v) {
+        int iv = (int)(v * 1000.0f + 0.5f);
+        if(iv < 0) iv = 0;
+        if(iv > 1000) iv = 1000;
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d.%03d", iv / 1000, iv % 1000);
+        return String(buf);
+    }
+
+    String pongJson(uint8_t pid) {
+        PongMatch* m = pongMatchOf(pid);
+        if(!m)
+            return String("{\"t\":\"pong\",\"phase\":\"lobby\",\"challenges\":") +
+                   duelChallengesJson() + "}";
+        uint8_t opp = (pid == m->a) ? m->b : m->a;
+        uint8_t me = (pid == m->a) ? 1 : 2;
+        String s = "{\"t\":\"pong\",\"phase\":\"";
+        s += (m->phase == 2) ? "over" : "playing";
+        s += "\",\"you\":";
+        s += pid;
+        s += ",\"me\":";
+        s += me;
+        s += ",\"opp\":\"";
+        s += ha_json_escape(_p[opp].nick);
+        s += "\",\"ball\":{\"x\":" + pongF(m->bx) + ",\"y\":" + pongF(m->by) + "}";
+        s += ",\"p1\":" + pongF(m->p1) + ",\"p2\":" + pongF(m->p2);
+        s += ",\"s1\":";
+        s += m->s1;
+        s += ",\"s2\":";
+        s += m->s2;
+        if(m->phase == 2) {
+            const char* r = (m->winner == pid) ? "win" : "lose";
             s += ",\"result\":\"";
             s += r;
             s += "\"";

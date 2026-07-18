@@ -10,6 +10,7 @@ typedef enum {
     MenuStop,
     MenuPack,
     MenuSsid,
+    MenuFlashFirmware,
     MenuSettings,
     MenuAbout,
 } MainMenuIndex;
@@ -51,6 +52,7 @@ static void ha_pick_pack(HotspotArcadeApp* app) {
     furi_string_free(result);
 }
 
+
 static void ha_menu_build(HotspotArcadeApp* app) {
     submenu_reset(app->submenu);
     submenu_set_header(app->submenu, app->session_active ? "Arcade  [ON]" : "Hotspot Arcade");
@@ -78,6 +80,9 @@ static void ha_menu_build(HotspotArcadeApp* app) {
     submenu_add_item(app->submenu, furi_string_get_cstr(label), MenuSsid, ha_menu_cb, app);
     furi_string_free(label);
 
+    if(!app->session_active)
+        submenu_add_item(
+            app->submenu, "Install Firmware", MenuFlashFirmware, ha_menu_cb, app);
     submenu_add_item(app->submenu, "Settings", MenuSettings, ha_menu_cb, app);
     submenu_add_item(app->submenu, "About", MenuAbout, ha_menu_cb, app);
 
@@ -137,6 +142,13 @@ bool hotspot_arcade_scene_main_menu_on_event(void* context, SceneManagerEvent ev
         return true;
     case MenuSsid:
         scene_manager_next_scene(app->scene_manager, HaSceneSsidInput);
+        return true;
+    case MenuFlashFirmware:
+        // The firmware ships bundled in the fap (extracted to apps_assets), so just
+        // flash the default - no file picker. The flasher polls for download mode;
+        // its Continue returns here (previous_scene) since we pushed it.
+        furi_string_set(app->flash_manifest, HA_DEFAULT_FW);
+        scene_manager_next_scene(app->scene_manager, HaSceneFlasher);
         return true;
     case MenuSettings:
         scene_manager_next_scene(app->scene_manager, HaSceneSettings);

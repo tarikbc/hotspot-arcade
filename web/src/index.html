@@ -13,6 +13,7 @@
 <header class="hdr">
   <span class="wordmark">Hotspot Arcade<span class="cur" aria-hidden="true">&#9616;</span></span>
   <span class="hdr-right">
+    <button id="mute" class="mute" type="button" aria-label="Mute" aria-pressed="false">&#9834;</button>
     <span id="dot" class="dot warn" title="connection"></span>
     <span id="hdr-nick"></span>
   </span>
@@ -55,24 +56,72 @@
   <div id="tv-scores" class="scores"></div>
 </section>
 
-<!-- 4. Connect 4 -->
-<section id="c4" class="screen hide">
-  <header class="bar"><h2>Connect 4</h2><button id="c4-leave" class="btn ghost sm hide">Leave</button></header>
+<!-- 4. Duel (Connect 4 / Tic-Tac-Toe / Dots & Boxes) -->
+<section id="duel" class="screen hide">
+  <header class="bar"><h2 id="duel-title">Duel</h2><button id="duel-leave" class="btn ghost sm hide">Leave</button></header>
 
-  <div id="c4-lobby">
-    <div id="c4-incoming" class="challenges"></div>
+  <div id="duel-lobby">
+    <div id="duel-incoming" class="challenges"></div>
     <p class="sub">Challenge a player</p>
-    <ul id="c4-players" class="players"></ul>
+    <ul id="duel-players" class="players"></ul>
   </div>
 
-  <div id="c4-match" class="hide">
-    <div id="c4-turn" class="turn"></div>
-    <div id="c4-board" class="board"></div>
+  <div id="duel-match" class="hide">
+    <div id="duel-turn" class="turn"></div>
+    <div id="duel-score" class="dscore hide"></div>
+    <div id="duel-board" class="board"></div>
   </div>
 
-  <div id="c4-over" class="hide over">
-    <div id="c4-result" class="result"></div>
-    <button id="c4-back" class="btn big">Back to lobby</button>
+  <div id="duel-over" class="hide over">
+    <div id="duel-result" class="result"></div>
+    <div class="over-actions">
+      <button id="duel-rematch" class="btn big">Rematch</button>
+      <button id="duel-back" class="btn ghost big">Back to lobby</button>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Draw & Guess -->
+<section id="draw" class="screen hide">
+  <header class="bar"><h2>Draw &amp; Guess</h2><span id="draw-status" class="me"></span></header>
+  <div id="draw-word" class="draw-word"></div>
+  <canvas id="draw-canvas" class="draw-canvas"></canvas>
+  <div id="draw-tools" class="draw-tools hide">
+    <button id="draw-clear" class="btn ghost sm">Clear</button>
+  </div>
+  <div id="draw-guess" class="hide">
+    <div id="draw-chat" class="chat"></div>
+    <form id="draw-form" class="guess-row" autocomplete="off">
+      <input id="draw-input" maxlength="24" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="Your guess">
+      <button class="btn sm" type="submit">Send</button>
+    </form>
+  </div>
+  <div id="draw-reveal" class="game-state hide"></div>
+</section>
+
+<!-- 6. Pong -->
+<section id="pong" class="screen hide">
+  <header class="bar"><h2>Pong</h2><button id="pong-leave" class="btn ghost sm hide">Leave</button></header>
+
+  <div id="pong-lobby">
+    <div id="pong-incoming" class="challenges"></div>
+    <p class="sub">Challenge a player</p>
+    <ul id="pong-players" class="players"></ul>
+  </div>
+
+  <div id="pong-match" class="hide">
+    <div id="pong-score" class="pong-score"></div>
+    <canvas id="pong-canvas" class="pong-canvas"></canvas>
+    <div class="pong-pads">
+      <button id="pong-up" class="btn ghost pad" aria-label="Up">&#9650;</button>
+      <button id="pong-dn" class="btn ghost pad" aria-label="Down">&#9660;</button>
+    </div>
+  </div>
+
+  <div id="pong-over" class="hide over">
+    <div id="pong-result" class="result"></div>
+    <button id="pong-back" class="btn big">Back to lobby</button>
   </div>
 </section>
 

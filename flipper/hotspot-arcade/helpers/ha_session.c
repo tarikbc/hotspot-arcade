@@ -8,6 +8,19 @@
 
 enum { RXS_SYNC, RXS_TYPE, RXS_LEN0, RXS_LEN1, RXS_PAYLOAD, RXS_CRC };
 
+// ---------------- feedback (respects settings) ----------------
+
+// A light blip for minor events (a player joins).
+static void feedback_blip(HotspotArcadeApp* app) {
+    if(app->vibro_on) notification_message(app->notifications, &sequence_single_vibro);
+}
+
+// A success cue for a scored moment (trivia reveal, a Connect Four win).
+static void feedback_success(HotspotArcadeApp* app) {
+    if(app->vibro_on) notification_message(app->notifications, &sequence_single_vibro);
+    if(app->sound_on) notification_message(app->notifications, &sequence_success);
+}
+
 // ---------------- console / event feed ----------------
 
 static void console_add(HotspotArcadeApp* app, const char* line) {
@@ -164,6 +177,7 @@ static void trivia_send_current(HotspotArcadeApp* app) {
     furi_string_free(j);
     app->trivia_phase = 1;
     app->answers_in = 0;
+    for(int k = 0; k < 4; k++) app->answer_counts[k] = 0;
 }
 
 bool ha_trivia_begin(HotspotArcadeApp* app) {
@@ -268,7 +282,9 @@ static void send_next_file(HotspotArcadeApp* app) {
 }
 
 static void start_handshake(HotspotArcadeApp* app) {
+    app->last_handshake_tick = furi_get_tick();
     roster_clear(app);
+    app->portal_running = false; // show progress, not "Broadcasting", while (re)streaming
     app->trivia_phase = 0;
     app->answers_in = 0;
     app->answers_total = 0;
@@ -306,6 +322,10 @@ void ha_session_stop(HotspotArcadeApp* app) {
 
 static void on_status(HotspotArcadeApp* app, const char* tok) {
     furi_string_set(app->status, tok);
+    // A valid framed STATUS means the board speaks our protocol: reset the
+    // handshake watchdog. (Wrong/absent firmware never gets here, so the watchdog
+    // in the tick fires and drops to the Install-firmware prompt.)
+    if(app->hs > HaHsIdle && app->hs < HaHsUp) app->last_handshake_tick = furi_get_tick();
     if(strncmp(tok, "cleared", 7) == 0) {
         if(app->hs == HaHsClear) {
             app->hs = HaHsFiles;
@@ -334,8 +354,11 @@ static void on_status(HotspotArcadeApp* app, const char* tok) {
     } else if(strncmp(tok, "stopped", 7) == 0) {
         app->portal_running = false;
     } else if(strncmp(tok, "boot", 4) == 0) {
-        // ESP rebooted: it lost the AP + all clients. Redo the handshake.
-        if(app->session_active) start_handshake(app);
+        // ESP rebooted: it lost the AP + all clients. Redo the handshake, but
+        // rate-limit so a board stuck rebooting can't tight-loop the handshake.
+        if(app->session_active && (furi_get_tick() - app->last_handshake_tick) > 3000) {
+            start_handshake(app);
+        }
     }
 }
 
@@ -345,6 +368,21 @@ static void dispatch_frame(HotspotArcadeApp* app) {
     uint8_t* p = app->rx_buf;
     uint16_t len = app->rx_len;
     p[len] = '\0'; // JSON/text payloads: safe (buf has +1)
+
+    // PING is the firmware's identity beacon: magic(4) + version(2 LE). Only a beacon
+    // carrying OUR magic counts as "our board present" (so another project's firmware
+    // on the same ESP isn't mistaken for ours); we also capture its version so an
+    // outdated board can be flagged. Tracked even when idle.
+    if(app->rx_type == HA_MSG_PING) {
+        if(len >= 4 && p[0] == HA_FW_MAGIC_0 && p[1] == HA_FW_MAGIC_1 &&
+           p[2] == HA_FW_MAGIC_2 && p[3] == HA_FW_MAGIC_3) {
+            app->last_ping_tick = furi_get_tick();
+            app->board_fw_version = (len >= 6) ? (uint16_t)(p[4] | ((uint16_t)p[5] << 8)) : 0;
+        }
+        return;
+    }
+    // Everything else (roster/scores/events) only matters during a live session.
+    if(app->rx_type != HA_MSG_STATUS && !app->session_active) return;
 
     switch(app->rx_type) {
     case HA_MSG_STATUS:
@@ -361,6 +399,7 @@ static void dispatch_frame(HotspotArcadeApp* app) {
             furi_string_printf(c, "JOIN %s", nick);
             console_add(app, furi_string_get_cstr(c));
             furi_string_free(c);
+            feedback_blip(app);
         }
         break;
     case HA_MSG_LEAVE:
@@ -378,23 +417,34 @@ static void dispatch_frame(HotspotArcadeApp* app) {
     case HA_MSG_ROUND_RESULT:
         furi_string_set_str(app->last_event, (const char*)p);
         console_add(app, (const char*)p);
+        feedback_success(app); // trivia reveal scored, or a Connect Four win
         break;
     case HA_MSG_EVENT: {
         int v;
         if(ha_json_int((const char*)p, "answers", &v)) {
             app->answers_in = v;
             if(ha_json_int((const char*)p, "total", &v)) app->answers_total = v;
+            // Parse the counts array "counts":[a,b,c,d] into answer_counts[].
+            const char* cp = strstr((const char*)p, "\"counts\"");
+            if(cp) {
+                cp = strchr(cp, '[');
+                for(int k = 0; k < 4 && cp; k++) {
+                    cp++;
+                    app->answer_counts[k] = (int)strtol(cp, NULL, 10);
+                    cp = strchr(cp, ',');
+                }
+            }
         } else {
-            char c4[64];
-            if(ha_json_str((const char*)p, "c4", c4, sizeof(c4))) {
-                furi_string_set_str(app->last_event, c4);
-                console_add(app, c4);
+            char ev[64];
+            if(ha_json_str((const char*)p, "duel", ev, sizeof(ev)) ||
+               ha_json_str((const char*)p, "pong", ev, sizeof(ev)) ||
+               ha_json_str((const char*)p, "draw", ev, sizeof(ev))) {
+                furi_string_set_str(app->last_event, ev);
+                console_add(app, ev);
             }
         }
         break;
     }
-    case HA_MSG_PING:
-        break; // liveness only
     default:
         break;
     }
@@ -456,16 +506,18 @@ void ha_session_rx(HotspotArcadeApp* app) {
     }
 }
 
+// "Board present" means we heard our firmware's PING beacon recently. Parse the RX
+// (rx_byte sets last_ping_tick on a valid framed PING), so a board running the wrong
+// firmware, or nothing, fails this even though it may be spewing other bytes.
 bool ha_board_present(HotspotArcadeApp* app, uint32_t wait_ms) {
-    if(furi_get_tick() - app->last_rx_tick < 2500) return true;
+    if(furi_get_tick() - app->last_ping_tick < 2500) return true;
     uint32_t deadline = furi_get_tick() + wait_ms;
     uint8_t buf[64];
     while(furi_get_tick() < deadline) {
-        if(ha_uart_rx(app->uart, buf, sizeof(buf)) > 0) {
-            app->last_rx_tick = furi_get_tick();
-            return true;
-        }
-        furi_delay_ms(20);
+        size_t n = ha_uart_rx(app->uart, buf, sizeof(buf));
+        for(size_t i = 0; i < n; i++) rx_byte(app, buf[i]);
+        if(furi_get_tick() - app->last_ping_tick < 2500) return true;
+        if(n == 0) furi_delay_ms(20);
     }
     return false;
 }

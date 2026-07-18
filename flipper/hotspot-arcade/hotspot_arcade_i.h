@@ -28,6 +28,7 @@
 #define HA_ASSET_MIME (32)
 #define HA_LINE_MAX (512)
 #define HA_LINK_TIMEOUT_MS (5000)
+#define HA_HANDSHAKE_TIMEOUT_MS (4000) // no ack progress -> board isn't our firmware
 #define HA_CONSOLE_MAX (3072)
 #define HA_FILE_MAX (60000) // max single web asset streamed to the ESP
 #define HA_DEFAULT_DUR (20) // trivia seconds per question
@@ -36,6 +37,11 @@
 #define HA_WEB_DIR HA_DATA_DIR "/web"
 #define HA_TRIVIA_DIR HA_DATA_DIR "/trivia"
 #define HA_LOGS_DIR HA_DATA_DIR "/logs"
+// Firmware bundle ships inside the fap (fap_file_assets) and the loader extracts it
+// to apps_assets on launch, so the default flasher bundle lives there (read-only-ish,
+// re-synced from the fap each launch) — no SD setup needed for a fresh install.
+#define HA_FIRMWARE_DIR EXT_PATH("apps_assets/hotspot_arcade/firmware")
+#define HA_DEFAULT_FW HA_FIRMWARE_DIR "/flash.txt"
 #define HA_CONFIG_PATH HA_DATA_DIR "/config.txt"
 #define HA_MANIFEST_PATH HA_WEB_DIR "/manifest.json"
 
@@ -112,6 +118,7 @@ typedef struct HotspotArcadeApp {
     uint8_t trivia_phase; // 0 idle, 1 question, 2 reveal
     int answers_in; // answers received for current question (from EVENT)
     int answers_total; // players connected (from EVENT)
+    int answer_counts[4]; // per-option tally (from EVENT), for live bars
     FuriString* cur_q; // current question text
     FuriString* cur_opts[4];
     int cur_correct;
@@ -135,11 +142,29 @@ typedef struct HotspotArcadeApp {
     bool menu_shows_active;
     HaHandshake hs;
     uint8_t file_idx; // during HaHsFiles
+    uint32_t last_handshake_tick; // rate-limits auto-reconnect so a brownout-reboot
+                                  // loop can't tight-loop the handshake
 
     // Board liveness
     uint32_t last_rx_tick;
+    uint32_t last_ping_tick; // last valid PING frame = our firmware is present
+    uint16_t board_fw_version; // firmware version reported in the beacon (0 = unknown)
     bool link_lost;
     bool awaiting_board;
+
+    // --- ESP flasher (added for the on-device firmware installer) ---
+    // The flash worker runs off the GUI thread and posts progress/done events;
+    // `flashing` blocks Back while a write is in progress (can't be aborted safely).
+    FuriThread* flash_thread;
+    FuriString* flash_manifest; // selected flash.txt path
+    volatile bool flashing; // true once connected (blocks Back mid-write)
+    volatile bool flash_cancel; // set on exit to stop the download-mode poll
+    volatile uint8_t flash_img, flash_cnt, flash_pct;
+    char flash_stage[40];
+    char flash_msg[80];
+    bool flash_ok;
+    uint8_t flash_phase; // 0=waiting for download mode, 1=flashing, 2=done
+    // --- end ESP flasher ---
 
     volatile bool closing;
 } HotspotArcadeApp;

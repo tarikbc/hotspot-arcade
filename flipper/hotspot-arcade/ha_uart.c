@@ -13,6 +13,7 @@ struct HaUart {
     FuriStreamBuffer* rx_stream; // IRQ producer -> GUI consumer (SPSC)
     FuriHalSerialHandle* serial_handle;
     Expansion* expansion;
+    uint32_t baudrate; // normal session baud, restored by ha_uart_resume()
     HaUartNotify notify;
     void* notify_ctx;
 };
@@ -58,6 +59,7 @@ HaUart* ha_uart_init(uint32_t baudrate, HaUartNotify notify, void* notify_ctx) {
     memset(uart, 0, sizeof(HaUart));
     uart->notify = notify;
     uart->notify_ctx = notify_ctx;
+    uart->baudrate = baudrate;
 
     uart->rx_stream = furi_stream_buffer_alloc(RX_STREAM_SIZE, 1);
     uart->rx_thread = furi_thread_alloc();
@@ -113,4 +115,19 @@ void ha_uart_tx(HaUart* uart, const uint8_t* data, size_t len) {
     if(uart->serial_handle) {
         furi_hal_serial_tx(uart->serial_handle, data, len);
     }
+}
+
+FuriHalSerialHandle* ha_uart_serial(HaUart* uart) {
+    return uart->serial_handle;
+}
+
+void ha_uart_suspend(HaUart* uart) {
+    // Stop consuming RX so the flasher owns the line; the worker just parks on its
+    // flag-wait (no RxDone events arrive) and needs no teardown.
+    furi_hal_serial_async_rx_stop(uart->serial_handle);
+}
+
+void ha_uart_resume(HaUart* uart) {
+    furi_hal_serial_set_br(uart->serial_handle, uart->baudrate);
+    furi_hal_serial_async_rx_start(uart->serial_handle, ha_uart_on_irq_cb, uart, false);
 }

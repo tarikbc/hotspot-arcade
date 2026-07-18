@@ -44,9 +44,12 @@ Single Arduino sketch plus header-only helpers (one translation unit):
 - `ha_assets.h` — in-RAM file table. The Flipper streams gzipped files in; the HTTP
   catch-all serves them (with `Content-Encoding: gzip`). No filesystem, so nothing
   survives a reboot; the Flipper re-streams on the next session.
-- `ha_games.h` — the engine: player roster, Trivia, and Connect Four, plus the JSON
-  state serialization for each client. Event-driven (no per-tick loop needed for these
-  two games); a future arcade game adds a fixed-timestep `tick`.
+- `ha_games.h` — the engine: player roster plus all six games and their per-client JSON
+  serialization. Trivia is host-driven; Connect Four / Tic-Tac-Toe / Dots & Boxes share
+  one generalized duel + challenge system (parameterized by kind); Drawing rotates a
+  drawer and relays ink; Pong runs on a fixed-timestep `tick()` (called from the `.ino`
+  loop) alongside Drawing's round timers. Trivia and the duels are event-driven; Pong is
+  the real-time path.
 - `ha_json.h` / `ha_proto.h` — tiny JSON reader/writer and the UART frame constants +
   CRC-8.
 
@@ -70,8 +73,14 @@ A `ViewDispatcher` + `SceneManager` app, same shape as flytrap:
 - `helpers/ha_storage.c` — config (FlipperFormat), `manifest.json` parsing, binary-safe
   file reads (pre-reserved buffers to avoid an OOM-inducing 2x realloc peak), trivia
   pack loading.
-- `scenes/` — main_menu, lobby (dashboard + start flow), game_select, host_trivia,
-  host_duel, leaderboard, settings, ssid_input, textview (console).
+- `scenes/` — main_menu, lobby (dashboard + start flow), game_select, host_trivia (live
+  answer bars + podium), host_duel (event feed for the player-driven games), leaderboard,
+  settings, ssid_input, flasher, textview (console).
+- `helpers/ha_esp_port.c` + `helpers/ha_flasher.c` + `scenes/..._flasher.c` — an on-device
+  ESP flasher over the GPIO UART (Espressif `esp-serial-flasher`, Apache-2.0, vendored in
+  `lib/esp-serial-flasher/` trimmed to the ESP32-S2 stub). It borrows the serial line via
+  `ha_uart_suspend`/`resume`, polls for download mode, flashes the SD firmware bundle with
+  MD5 verify on a worker thread, and reboots the ESP into the new firmware.
 
 All app state is single-threaded (mutated only on the GUI thread after RX is drained),
 so there are no locks on the Flipper side.

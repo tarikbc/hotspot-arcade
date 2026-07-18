@@ -5,6 +5,8 @@
   var LABELS = ["A", "B", "C", "D"];
   var last = null;      // last trivia message, so scores render across phases
   var barAnim = null;
+  var ticks = [];       // scheduled countdown blips
+  var revealedFor = -1; // question index we already played the reveal sound for
 
   function rank(scores) {
     if (!scores || !scores.length) return "";
@@ -17,9 +19,12 @@
 
   // Animate the bar from time-remaining down to zero using a transform so it
   // stays smooth without a per-frame timer. Turns red (.hot) in the last 3s.
+  function clearTicks() { ticks.forEach(clearTimeout); ticks = []; }
+
   function runBar(deadline, dur) {
     var bar = $("tv-bar"), fill = bar.firstElementChild;
     if (barAnim) { clearTimeout(barAnim); barAnim = null; }
+    clearTicks();
     show("tv-bar");
     var remain = deadline - serverNow();
     bar.classList.remove("hot");
@@ -34,6 +39,10 @@
     });
     if (remain <= 3000) bar.classList.add("hot");
     else barAnim = setTimeout(function () { bar.classList.add("hot"); }, remain - 3000);
+    // A blip for each of the final 3 seconds.
+    [3000, 2000, 1000].forEach(function (t) {
+      if (remain > t) ticks.push(setTimeout(function () { A.sfx("tick"); }, remain - t));
+    });
   }
 
   function render(m) {
@@ -44,6 +53,7 @@
     if (m.phase === "idle") {
       status.textContent = "Get ready...";
       show("tv-status"); hide("tv-bar");
+      clearTicks();
       q.textContent = ""; opts.innerHTML = "";
       $("tv-rank").textContent = rank(m.scores);
       return;
@@ -58,8 +68,21 @@
     var mine = (typeof m.mine === "number") ? m.mine : -1;
     var picked = mine >= 0;
 
-    if (reveal) { hide("tv-bar"); }
-    else { noteDeadline(m.deadline, m.dur); runBar(m.deadline, m.dur); }
+    if (reveal) {
+      hide("tv-bar"); clearTicks();
+      // Play the outcome once per question: correct if you nailed it, wrong if
+      // you picked and missed. Silent if you never answered.
+      if (revealedFor !== m.i) {
+        revealedFor = m.i;
+        if (picked) {
+          if (mine === m.correct) { A.sfx("correct"); A.vibe([25, 40, 25]); }
+          else { A.sfx("wrong"); A.vibe(120); }
+        }
+      }
+    } else {
+      revealedFor = -1;
+      noteDeadline(m.deadline, m.dur); runBar(m.deadline, m.dur);
+    }
 
     opts.innerHTML = "";
     (m.o || []).forEach(function (text, i) {
@@ -83,6 +106,7 @@
 
       b.addEventListener("click", function () {
         if (b.disabled) return;
+        A.sfx("buzz"); A.vibe(15);
         send({ t: "answer", c: i });
         // Optimistic lock; server confirms via the next trivia message.
         Array.prototype.forEach.call(opts.children, function (c) { c.disabled = true; });

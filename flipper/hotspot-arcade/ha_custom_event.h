@@ -19,4 +19,12 @@ typedef enum {
     // Trivia host actions (buttons on the host_trivia widget).
     HaEventTriviaReveal = 108,
     HaEventTriviaNext = 109,
+    // Flash Firmware (ESP-serial-flasher): start (board detected in download mode),
+    // per-block progress, done.
+    HaEventFlashStart = 111,
+    HaEventFlashProgress = 112,
+    HaEventFlashDone = 113,
+    // From the lobby "No board" prompt: install firmware, then continue where headed.
+    HaEventInstallFirmware = 114,
+    HaEventFlashContinue = 115,
 } HaCustomEvent;

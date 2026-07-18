@@ -10,6 +10,14 @@
 #define HA_SYNC (0xA5)
 #define HA_MAX_PAYLOAD (4096)
 
+// Firmware identity in the PING beacon (must match the ESP's ha_proto.h). MAGIC
+// tells our board from another project's; VERSION lets us flag an outdated board.
+#define HA_FW_MAGIC_0 0x48
+#define HA_FW_MAGIC_1 0x41
+#define HA_FW_MAGIC_2 0x52
+#define HA_FW_MAGIC_3 0x43
+#define HA_FW_VERSION 2 // the version this app requires; older board -> offer update
+
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES 0x10
 #define HA_MSG_FILE_BEGIN 0x11
@@ -37,6 +45,10 @@
 #define HA_GAME_NONE 0
 #define HA_GAME_TRIVIA 1
 #define HA_GAME_CONNECT4 2
+#define HA_GAME_TICTACTOE 3
+#define HA_GAME_DOTS 4
+#define HA_GAME_DRAW 5
+#define HA_GAME_PONG 6
 
 static inline uint8_t ha_crc8_upd(uint8_t crc, uint8_t b) {
     crc ^= b;
