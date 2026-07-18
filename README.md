@@ -81,13 +81,13 @@ The 1v1 board duels (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes, Reversi):
   <img src="docs/img/web-reversi.png" alt="Reversi/Othello: 8x8 board with legal-move hints and disc counts" width="19%">
 </p>
 
-**On the Flipper** — the host device shows the app menu, the live broadcasting dashboard,
-and the trivia scoreboard on its 1-bit screen:
+**On the Flipper** — the host device shows the app menu and the live broadcasting dashboard
+(players + active game + event feed) on its 1-bit screen. Every game is phone-driven, so the
+Flipper just selects the game and watches the feed:
 
 <p align="center">
-  <img src="docs/img/flipper-menu.png" alt="Flipper app menu" width="31%">
-  <img src="docs/img/flipper-dashboard.png" alt="Flipper broadcasting dashboard" width="31%">
-  <img src="docs/img/flipper-trivia.png" alt="Flipper trivia scoreboard" width="31%">
+  <img src="docs/img/flipper-menu.png" alt="Flipper app menu" width="40%">
+  <img src="docs/img/flipper-dashboard.png" alt="Flipper broadcasting dashboard: players, active game, event feed" width="40%">
 </p>
 
 ## Hardware

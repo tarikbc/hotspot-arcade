@@ -35,10 +35,16 @@ jobs:
             --libraries esp32/libs \
             --output-dir esp32/hotspot-arcade-fw/build \
             esp32/hotspot-arcade-fw
-          # boot_app0.bin ships with the core; copy it in so all four flashable
-          # images sit together as release assets (offsets are in the notes).
+          # Merge the four flashable images into a single firmware-merged.bin
+          # (flashable at 0x0), so the release ships one ESP image instead of four.
+          BUILD=esp32/hotspot-arcade-fw/build
           BOOT_APP0="$HOME/.arduino15/packages/esp32/hardware/esp32/2.0.17/tools/partitions/boot_app0.bin"
-          cp "$BOOT_APP0" esp32/hotspot-arcade-fw/build/boot_app0.bin
+          ESPTOOL=$(ls "$HOME/.arduino15/packages/esp32/tools/esptool_py/"*/esptool 2>/dev/null | head -1)
+          "$ESPTOOL" --chip esp32s2 merge_bin -o "$BUILD/firmware-merged.bin" \
+            0x1000  "$BUILD/hotspot-arcade-fw.ino.bootloader.bin" \
+            0x8000  "$BUILD/hotspot-arcade-fw.ino.partitions.bin" \
+            0xe000  "$BOOT_APP0" \
+            0x10000 "$BUILD/hotspot-arcade-fw.ino.bin"
 
       - uses: actions/setup-node@v4
         with:
@@ -77,29 +83,22 @@ jobs:
 
             ## Assets
 
-            - `hotspot_arcade.fap`: Flipper app (Momentum firmware, install to `/ext/apps/GPIO/`).
-            - `index.html.gz` + `manifest.json` (or `web-bundle.zip`): phone game bundle for `/ext/apps_data/hotspot_arcade/web/`.
-            - ESP32-S2 firmware images (below).
+            - `hotspot_arcade.fap`: the Flipper app (install to `/ext/apps/GPIO/`). It
+              **bundles the ESP firmware**, so you can flash the board on-device — no computer needed.
+            - `web-bundle.zip`: the phone game bundle; unzip into `/ext/apps_data/hotspot_arcade/web/`.
+            - `firmware-merged.bin`: the ESP32-S2 firmware as a single image, for flashing from a
+              computer (optional — the fap already carries it for on-device flashing).
 
-            ## Flash the ESP32-S2
+            ## Flash the ESP32-S2 from a computer (optional)
 
             Download mode: hold BOOT, tap RESET, release BOOT. **Never `--erase-all` on the S2.**
 
             ```sh
-            esptool.py --chip esp32s2 --before default_reset --after hard_reset write_flash -z \
-              0x1000  hotspot-arcade-fw.ino.bootloader.bin \
-              0x8000  hotspot-arcade-fw.ino.partitions.bin \
-              0xe000  boot_app0.bin \
-              0x10000 hotspot-arcade-fw.ino.bin
+            esptool.py --chip esp32s2 --before default_reset --after hard_reset write_flash 0x0 firmware-merged.bin
             ```
 
-            Then tap RESET to run. See the README and CLAUDE.md for the full flash + deploy flow.
+            Then tap RESET to run. Or skip this entirely and use **Install Firmware** on the Flipper.
           files: |
             flipper/hotspot-arcade/dist/hotspot_arcade.fap
-            web/dist/index.html.gz
-            web/dist/manifest.json
             web/web-bundle.zip
-            esp32/hotspot-arcade-fw/build/hotspot-arcade-fw.ino.bin
-            esp32/hotspot-arcade-fw/build/hotspot-arcade-fw.ino.bootloader.bin
-            esp32/hotspot-arcade-fw/build/hotspot-arcade-fw.ino.partitions.bin
-            esp32/hotspot-arcade-fw/build/boot_app0.bin
+            esp32/hotspot-arcade-fw/build/firmware-merged.bin
