@@ -48,8 +48,7 @@ static void ha_menu_build(HotspotArcadeApp* app) {
     furi_string_free(label);
 
     if(!app->session_active)
-        submenu_add_item(
-            app->submenu, "Install Firmware", MenuFlashFirmware, ha_menu_cb, app);
+        submenu_add_item(app->submenu, "Install Firmware", MenuFlashFirmware, ha_menu_cb, app);
     submenu_add_item(app->submenu, "Settings", MenuSettings, ha_menu_cb, app);
     submenu_add_item(app->submenu, "About", MenuAbout, ha_menu_cb, app);
 
@@ -81,8 +80,7 @@ bool hotspot_arcade_scene_main_menu_on_event(void* context, SceneManagerEvent ev
     switch(event.event) {
     case MenuStartOrDash:
         if(!app->session_active && app->asset_count == 0 && !ha_storage_load_manifest(app)) {
-            ha_show_message(
-                app, "No web bundle", "Deploy web/dist to\nthe SD card first.");
+            ha_show_message(app, "No web bundle", "Deploy web/dist to\nthe SD card first.");
             view_dispatcher_switch_to_view(app->view_dispatcher, HaViewSubmenu);
         } else {
             scene_manager_next_scene(app->scene_manager, HaSceneLobby);

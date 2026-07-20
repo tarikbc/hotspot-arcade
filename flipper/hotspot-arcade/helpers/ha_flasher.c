@@ -7,12 +7,12 @@
 // The ESP ROM bootloader always comes up at 115200; we connect there (raising the
 // rate after connect is possible but not worth the extra failure mode here). The
 // app's own link runs at HA_UART_BAUD — ha_uart_resume() restores it afterwards.
-#define FLASH_BAUD (115200u)
-#define FLASH_BLOCK (1024u)
+#define FLASH_BAUD       (115200u)
+#define FLASH_BLOCK      (1024u)
 #define FLASH_MAX_IMAGES (8)
-#define FLASH_PATH_MAX (256)
-#define FLASH_DIR_MAX (160) // dir + '/' + name must fit in FLASH_PATH_MAX
-#define FLASH_NAME_MAX (92)
+#define FLASH_PATH_MAX   (256)
+#define FLASH_DIR_MAX    (160) // dir + '/' + name must fit in FLASH_PATH_MAX
+#define FLASH_NAME_MAX   (92)
 
 typedef struct {
     uint32_t offset;
@@ -26,7 +26,8 @@ static bool read_manifest(Storage* storage, const char* path, FuriString* out) {
         uint8_t buf[128];
         size_t rd;
         while((rd = storage_file_read(f, buf, sizeof(buf))) > 0) {
-            for(size_t i = 0; i < rd; i++) furi_string_push_back(out, (char)buf[i]);
+            for(size_t i = 0; i < rd; i++)
+                furi_string_push_back(out, (char)buf[i]);
             if(furi_string_size(out) > 4096) break; // manifests are tiny
         }
     }
@@ -51,21 +52,26 @@ static int
     int count = 0;
     const char* p = text;
     while(*p && count < max) {
-        while(*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+        while(*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+            p++;
         if(!*p) break;
         if(*p == '#') {
-            while(*p && *p != '\n') p++;
+            while(*p && *p != '\n')
+                p++;
             continue;
         }
         char* end;
         uint32_t off = (uint32_t)strtoul(p, &end, 0);
         if(end == p) return -1;
         p = end;
-        while(*p == ' ' || *p == '\t') p++;
+        while(*p == ' ' || *p == '\t')
+            p++;
         char fn[FLASH_NAME_MAX];
         int fi = 0;
-        while(*p && *p != '\r' && *p != '\n' && fi < (int)sizeof(fn) - 1) fn[fi++] = *p++;
-        while(fi > 0 && (fn[fi - 1] == ' ' || fn[fi - 1] == '\t')) fi--;
+        while(*p && *p != '\r' && *p != '\n' && fi < (int)sizeof(fn) - 1)
+            fn[fi++] = *p++;
+        while(fi > 0 && (fn[fi - 1] == ' ' || fn[fi - 1] == '\t'))
+            fi--;
         fn[fi] = '\0';
         if(fi == 0) return -1;
         images[count].offset = off;

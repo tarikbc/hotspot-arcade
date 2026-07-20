@@ -5,8 +5,7 @@
 
 static void ha_leaderboard_render(HotspotArcadeApp* app) {
     widget_reset(app->widget);
-    widget_add_string_element(
-        app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Leaderboard");
+    widget_add_string_element(app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Leaderboard");
     widget_add_line_element(app->widget, 0, 12, 127, 12);
 
     // Collect used players, then selection-sort the top LB_ROWS by score desc.
@@ -34,11 +33,21 @@ static void ha_leaderboard_render(HotspotArcadeApp* app) {
         FuriString* row = furi_string_alloc();
         furi_string_printf(row, "%d. %s", r + 1, p->nick);
         widget_add_string_element(
-            app->widget, 0, 15 + r * 8, AlignLeft, AlignTop, FontSecondary,
+            app->widget,
+            0,
+            15 + r * 8,
+            AlignLeft,
+            AlignTop,
+            FontSecondary,
             furi_string_get_cstr(row));
         furi_string_printf(row, "%ld", (long)p->score);
         widget_add_string_element(
-            app->widget, 127, 15 + r * 8, AlignRight, AlignTop, FontSecondary,
+            app->widget,
+            127,
+            15 + r * 8,
+            AlignRight,
+            AlignTop,
+            FontSecondary,
             furi_string_get_cstr(row));
         furi_string_free(row);
     }

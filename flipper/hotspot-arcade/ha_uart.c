@@ -5,7 +5,7 @@
 #include <expansion/expansion.h>
 
 // GPIO USART on pins 13/14 — the one the WiFi dev board talks over.
-#define UART_CH (FuriHalSerialIdUsart)
+#define UART_CH        (FuriHalSerialIdUsart)
 #define RX_STREAM_SIZE (2048)
 
 struct HaUart {
@@ -25,10 +25,8 @@ typedef enum {
 
 #define WORKER_ALL_RX_EVENTS (WorkerEvtStop | WorkerEvtRxDone)
 
-static void ha_uart_on_irq_cb(
-    FuriHalSerialHandle* handle,
-    FuriHalSerialRxEvent ev,
-    void* context) {
+static void
+    ha_uart_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEvent ev, void* context) {
     HaUart* uart = context;
     if(ev == FuriHalSerialRxEventData) {
         uint8_t data = furi_hal_serial_async_rx(handle);

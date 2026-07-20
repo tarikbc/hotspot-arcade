@@ -14,10 +14,8 @@ static FuriHalSerialHandle* s_serial = NULL;
 static FuriStreamBuffer* s_rx = NULL;
 static uint32_t s_timer_end = 0;
 
-static void ha_esp_port_rx_isr(
-    FuriHalSerialHandle* handle,
-    FuriHalSerialRxEvent event,
-    void* context) {
+static void
+    ha_esp_port_rx_isr(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
     UNUSED(context);
     if(event == FuriHalSerialRxEventData) {
         uint8_t data = furi_hal_serial_async_rx(handle);

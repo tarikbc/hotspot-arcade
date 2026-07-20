@@ -67,8 +67,7 @@ static void ha_duel_render(HotspotArcadeApp* app) {
             furi_string_get_cstr(app->last_event));
     }
 
-    widget_add_button_element(
-        app->widget, GuiButtonTypeRight, "Scores", ha_duel_button_cb, app);
+    widget_add_button_element(app->widget, GuiButtonTypeRight, "Scores", ha_duel_button_cb, app);
     furi_string_free(tmp);
 }
 

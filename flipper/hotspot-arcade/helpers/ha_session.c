@@ -6,7 +6,14 @@
 // Everything here runs on the GUI thread (RX drained from the global custom event
 // handler), so app state is single-threaded: no locking needed.
 
-enum { RXS_SYNC, RXS_TYPE, RXS_LEN0, RXS_LEN1, RXS_PAYLOAD, RXS_CRC };
+enum {
+    RXS_SYNC,
+    RXS_TYPE,
+    RXS_LEN0,
+    RXS_LEN1,
+    RXS_PAYLOAD,
+    RXS_CRC
+};
 
 // ---------------- feedback (respects settings) ----------------
 
@@ -74,7 +81,8 @@ static void player_score(HotspotArcadeApp* app, uint8_t pid, int delta) {
 }
 
 static void roster_clear(HotspotArcadeApp* app) {
-    for(int i = 0; i < HA_MAX_PLAYERS; i++) app->players[i].used = false;
+    for(int i = 0; i < HA_MAX_PLAYERS; i++)
+        app->players[i].used = false;
 }
 
 // ---------------- trivia pack streaming ----------------
@@ -82,10 +90,13 @@ static void roster_clear(HotspotArcadeApp* app) {
 // the ESP as votable topics at session start, and the ESP orchestrates the game.
 
 static void copy_trim(const char* start, const char* end, FuriString* out) {
-    while(start < end && (*start == ' ' || *start == '\t')) start++;
-    while(end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r')) end--;
+    while(start < end && (*start == ' ' || *start == '\t'))
+        start++;
+    while(end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
+        end--;
     furi_string_set(out, "");
-    for(const char* p = start; p < end; p++) furi_string_push_back(out, *p);
+    for(const char* p = start; p < end; p++)
+        furi_string_push_back(out, *p);
 }
 
 static void json_escape_cat(FuriString* out, const char* s) {
@@ -126,7 +137,8 @@ static void trivia_stream_pack(HotspotArcadeApp* app, const char* content, const
     FuriString* name = furi_string_alloc();
     FuriString* q = furi_string_alloc();
     FuriString* o[4];
-    for(int k = 0; k < 4; k++) o[k] = furi_string_alloc();
+    for(int k = 0; k < 4; k++)
+        o[k] = furi_string_alloc();
     FuriString* tmp = furi_string_alloc();
     int correct = 0, gotOpts = 0;
     bool inQ = false, gotAns = false;
@@ -135,9 +147,11 @@ static void trivia_stream_pack(HotspotArcadeApp* app, const char* content, const
     const char* line = content;
     while(*line) {
         const char* eol = line;
-        while(*eol && *eol != '\n') eol++;
+        while(*eol && *eol != '\n')
+            eol++;
         const char* t = line;
-        while(t < eol && (*t == ' ' || *t == '\t')) t++;
+        while(t < eol && (*t == ' ' || *t == '\t'))
+            t++;
         if(strncmp(t, "Pack:", 5) == 0) {
             copy_trim(t + 5, eol, name);
             break;
@@ -152,9 +166,11 @@ static void trivia_stream_pack(HotspotArcadeApp* app, const char* content, const
     line = content;
     while(*line) {
         const char* eol = line;
-        while(*eol && *eol != '\n') eol++;
+        while(*eol && *eol != '\n')
+            eol++;
         const char* t = line;
-        while(t < eol && (*t == ' ' || *t == '\t')) t++;
+        while(t < eol && (*t == ' ' || *t == '\t'))
+            t++;
 
         if(t[0] == 'Q' && t[1] == ':') {
             if(inQ && gotOpts >= 4 && gotAns) trivia_send_q(app, q, o, correct);
@@ -163,7 +179,8 @@ static void trivia_stream_pack(HotspotArcadeApp* app, const char* content, const
             gotAns = false;
             correct = 0;
             copy_trim(t + 2, eol, q);
-            for(int k = 0; k < 4; k++) furi_string_set(o[k], "");
+            for(int k = 0; k < 4; k++)
+                furi_string_set(o[k], "");
         } else if(inQ) {
             if((t[0] >= 'A' && t[0] <= 'D') && t[1] == ':') {
                 copy_trim(t + 2, eol, o[t[0] - 'A']);
@@ -184,7 +201,8 @@ static void trivia_stream_pack(HotspotArcadeApp* app, const char* content, const
 
     furi_string_free(name);
     furi_string_free(q);
-    for(int k = 0; k < 4; k++) furi_string_free(o[k]);
+    for(int k = 0; k < 4; k++)
+        furi_string_free(o[k]);
     furi_string_free(tmp);
 }
 
@@ -385,8 +403,8 @@ static void dispatch_frame(HotspotArcadeApp* app) {
     // on the same ESP isn't mistaken for ours); we also capture its version so an
     // outdated board can be flagged. Tracked even when idle.
     if(app->rx_type == HA_MSG_PING) {
-        if(len >= 4 && p[0] == HA_FW_MAGIC_0 && p[1] == HA_FW_MAGIC_1 &&
-           p[2] == HA_FW_MAGIC_2 && p[3] == HA_FW_MAGIC_3) {
+        if(len >= 4 && p[0] == HA_FW_MAGIC_0 && p[1] == HA_FW_MAGIC_1 && p[2] == HA_FW_MAGIC_2 &&
+           p[3] == HA_FW_MAGIC_3) {
             app->last_ping_tick = furi_get_tick();
             app->board_fw_version = (len >= 6) ? (uint16_t)(p[4] | ((uint16_t)p[5] << 8)) : 0;
         }
@@ -493,7 +511,8 @@ void ha_session_rx(HotspotArcadeApp* app) {
     size_t n;
     bool got = false;
     while((n = ha_uart_rx(app->uart, buf, sizeof(buf))) > 0) {
-        for(size_t i = 0; i < n; i++) rx_byte(app, buf[i]);
+        for(size_t i = 0; i < n; i++)
+            rx_byte(app, buf[i]);
         got = true;
     }
     if(got) {
@@ -511,7 +530,8 @@ bool ha_board_present(HotspotArcadeApp* app, uint32_t wait_ms) {
     uint8_t buf[64];
     while(furi_get_tick() < deadline) {
         size_t n = ha_uart_rx(app->uart, buf, sizeof(buf));
-        for(size_t i = 0; i < n; i++) rx_byte(app, buf[i]);
+        for(size_t i = 0; i < n; i++)
+            rx_byte(app, buf[i]);
         if(furi_get_tick() - app->last_ping_tick < 2500) return true;
         if(n == 0) furi_delay_ms(20);
     }

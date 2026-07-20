@@ -10,10 +10,12 @@ static inline const char* ha_json_find(const char* s, const char* key) {
         if(p[0] != '"') continue;
         if(strncmp(p + 1, key, klen) == 0 && p[1 + klen] == '"') {
             const char* q = p + 1 + klen + 1;
-            while(*q == ' ') q++;
+            while(*q == ' ')
+                q++;
             if(*q != ':') continue;
             q++;
-            while(*q == ' ') q++;
+            while(*q == ' ')
+                q++;
             return q;
         }
     }
@@ -49,7 +51,8 @@ static inline bool ha_json_int(const char* s, const char* key, int* out) {
     }
     if(*q < '0' || *q > '9') return false;
     long v = 0;
-    while(*q >= '0' && *q <= '9') v = v * 10 + (*q++ - '0');
+    while(*q >= '0' && *q <= '9')
+        v = v * 10 + (*q++ - '0');
     *out = (int)(neg ? -v : v);
     return true;
 }

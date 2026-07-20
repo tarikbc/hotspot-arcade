@@ -81,7 +81,8 @@ bool ha_storage_read_file(const char* path, FuriString* out, size_t cap) {
             if(want > sizeof(buf) - 1) want = sizeof(buf) - 1;
             size_t rd = storage_file_read(file, buf, want);
             if(rd == 0) break;
-            for(size_t i = 0; i < rd; i++) furi_string_push_back(out, (char)buf[i]);
+            for(size_t i = 0; i < rd; i++)
+                furi_string_push_back(out, (char)buf[i]);
             total += rd;
         }
     }
@@ -130,4 +131,3 @@ bool ha_storage_load_manifest(HotspotArcadeApp* app) {
     furi_string_free(man);
     return app->asset_count > 0;
 }
-

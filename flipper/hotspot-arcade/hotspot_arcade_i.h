@@ -20,28 +20,28 @@
 #include "ha_custom_event.h"
 #include "scenes/ha_scene.h"
 
-#define HA_SSID_MAX (33) // 32 + NUL
-#define HA_MAX_PLAYERS (12)
-#define HA_NICK_LEN (20)
-#define HA_MAX_ASSETS (8)
-#define HA_ASSET_PATH (40)
-#define HA_ASSET_MIME (32)
-#define HA_LINE_MAX (512)
-#define HA_LINK_TIMEOUT_MS (5000)
+#define HA_SSID_MAX             (33) // 32 + NUL
+#define HA_MAX_PLAYERS          (12)
+#define HA_NICK_LEN             (20)
+#define HA_MAX_ASSETS           (8)
+#define HA_ASSET_PATH           (40)
+#define HA_ASSET_MIME           (32)
+#define HA_LINE_MAX             (512)
+#define HA_LINK_TIMEOUT_MS      (5000)
 #define HA_HANDSHAKE_TIMEOUT_MS (4000) // no ack progress -> board isn't our firmware
-#define HA_CONSOLE_MAX (3072)
-#define HA_FILE_MAX (60000) // max single web asset streamed to the ESP
+#define HA_CONSOLE_MAX          (3072)
+#define HA_FILE_MAX             (60000) // max single web asset streamed to the ESP
 
-#define HA_DATA_DIR EXT_PATH("apps_data/hotspot_arcade")
-#define HA_WEB_DIR HA_DATA_DIR "/web"
-#define HA_TRIVIA_DIR HA_DATA_DIR "/trivia"
-#define HA_LOGS_DIR HA_DATA_DIR "/logs"
+#define HA_DATA_DIR      EXT_PATH("apps_data/hotspot_arcade")
+#define HA_WEB_DIR       HA_DATA_DIR "/web"
+#define HA_TRIVIA_DIR    HA_DATA_DIR "/trivia"
+#define HA_LOGS_DIR      HA_DATA_DIR "/logs"
 // Firmware bundle ships inside the fap (fap_file_assets) and the loader extracts it
 // to apps_assets on launch, so the default flasher bundle lives there (read-only-ish,
 // re-synced from the fap each launch) — no SD setup needed for a fresh install.
-#define HA_FIRMWARE_DIR EXT_PATH("apps_assets/hotspot_arcade/firmware")
-#define HA_DEFAULT_FW HA_FIRMWARE_DIR "/flash.txt"
-#define HA_CONFIG_PATH HA_DATA_DIR "/config.txt"
+#define HA_FIRMWARE_DIR  EXT_PATH("apps_assets/hotspot_arcade/firmware")
+#define HA_DEFAULT_FW    HA_FIRMWARE_DIR "/flash.txt"
+#define HA_CONFIG_PATH   HA_DATA_DIR "/config.txt"
 #define HA_MANIFEST_PATH HA_WEB_DIR "/manifest.json"
 
 typedef enum {
@@ -128,7 +128,7 @@ typedef struct HotspotArcadeApp {
     HaHandshake hs;
     uint8_t file_idx; // during HaHsFiles
     uint32_t last_handshake_tick; // rate-limits auto-reconnect so a brownout-reboot
-                                  // loop can't tight-loop the handshake
+        // loop can't tight-loop the handshake
 
     // Board liveness
     uint32_t last_rx_tick;

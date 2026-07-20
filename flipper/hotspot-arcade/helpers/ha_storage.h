@@ -17,5 +17,4 @@ bool ha_storage_read_file(const char* path, FuriString* out, size_t cap);
 // Returns false if the manifest is missing or has no entries.
 bool ha_storage_load_manifest(HotspotArcadeApp* app);
 
-
 void ha_timestamp(FuriString* out);
