@@ -6,9 +6,9 @@ flipper/hotspot-arcade/.vscode/
 # ESP build output
 esp32/hotspot-arcade-fw/build/
 
-# Bundled ESP firmware images (build artifacts copied in by tools/build-fap.sh).
-# The flash.txt manifest beside them IS committed (source of truth).
-flipper/hotspot-arcade/assets/firmware/*.bin
+# Bundled ESP firmware images: these ARE committed so the app-catalog build
+# (bare ufbt at a commit) ships a working on-device flasher. Regenerate them
+# with tools/build-fap.sh whenever the ESP firmware changes, and re-commit.
 
 # Web build output is committed on release, but ignore local node cruft
 web/node_modules/
