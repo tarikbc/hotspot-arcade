@@ -180,4 +180,62 @@ assert.equal(brokenQ.msg.q, "", "no question text leaked from a half-built quest
   assert.ok(!opts.includes("only one option"), "the malformed prompt was dropped");
 }
 
+// --- WYR must not serve a stale pack after a re-clear leaves it empty -------
+// contentClear() has to fully wipe _wyr.packs (not just packCount back to 0),
+// and wyrCheckStart() has to gate on packCount > 0 the same way
+// triviaCheckStart() gates on _topicCount > 0. Otherwise: play a WYR pack once
+// (packs[0] gets populated), contentClear() for the next round without a
+// replacement WYR pack, and a second all-ready would silently start a round
+// off the still-nonzero packs[0].count and stale prompt text left over from
+// before the clear.
+{
+  const HA_GAME_WYR = 8;
+  const HA_GAME_TRIVIA = 1;
+
+  // Load and play a WYR pack once so packs[0] is populated with a
+  // distinctive, easy-to-spot prompt.
+  e.reset();
+  e.contentClear();
+  e.contentPack(HA_GAME_WYR, "Stale");
+  e.contentItem(JSON.stringify({ a: "STALE_OPTION_A", b: "STALE_OPTION_B" }));
+  e.selectGame(HA_GAME_WYR);
+  e.join(1, "ana");
+  e.join(2, "bo");
+  e.input(1, { t: "ready", ready: true });
+  e.input(2, { t: "ready", ready: true });
+  let first = [];
+  for (let ms = 1000; ms <= 8000; ms += 1000) first = first.concat(e.tick(ms));
+  const firstRound = first.filter((o) => o.to === "ws" && o.msg && o.msg.t === "wyr").pop();
+  assert.ok(firstRound, "the first WYR pack plays normally");
+  assert.ok(
+    JSON.stringify(firstRound.msg).includes("STALE_OPTION_A"),
+    "the first round shows the loaded pack's prompt",
+  );
+
+  // Re-clear content and load a DIFFERENT game's pack -- no WYR pack this
+  // time, so _wyr.packCount goes back to 0 with nothing to replace it.
+  e.contentClear();
+  e.contentPack(HA_GAME_TRIVIA, "Not Wyr");
+  e.contentItem(JSON.stringify({
+    q: "irrelevant", a: "1", b: "2", c: "3", d: "4", answer: "A",
+  }));
+
+  // Re-select WYR (still zero packs loaded) and ready both players again,
+  // exactly as if a host cleared content mid-session and players re-readied.
+  e.selectGame(HA_GAME_WYR);
+  e.input(1, { t: "ready", ready: true });
+  e.input(2, { t: "ready", ready: true });
+  let second = [];
+  for (let ms = 1000; ms <= 8000; ms += 1000) second = second.concat(e.tick(ms));
+
+  const staleRound = second.find(
+    (o) => o.to === "ws" && o.msg && o.msg.t === "wyr" &&
+      JSON.stringify(o.msg).includes("STALE_OPTION_A"),
+  );
+  assert.ok(!staleRound, "no wyr round carried the stale pack's prompt after the re-clear");
+
+  const anyRound = second.find((o) => o.to === "ws" && o.msg && o.msg.t === "wyr");
+  assert.ok(!anyRound, "with zero wyr packs loaded, the game refuses to start a round at all");
+}
+
 console.log("content: OK");

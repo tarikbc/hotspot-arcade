@@ -326,6 +326,7 @@ public:
     // a content game needs a loader below and nothing on the Flipper.
     void contentClear() {
         triviaTopicsClear();
+        for(int i = 0; i < TRIVIA_MAX_TOPICS; i++) _wyr.packs[i] = WyrPack{};
         _wyr.packCount = 0;
         _packGame = 0;
     }
@@ -1912,7 +1913,7 @@ private:
 
     void wyrCheckStart() {
         Party& pt = _wyr.pt;
-        if(pt.phase == 0 && partyAllReady(pt)) {
+        if(pt.phase == 0 && _wyr.packCount > 0 && partyAllReady(pt)) {
             pt.phase = 1;
             pt.countdownEnd = millis() + (uint32_t)PARTY_COUNTDOWN * 1000;
             pt.lastSec = -1;
