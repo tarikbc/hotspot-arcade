@@ -228,6 +228,12 @@ h3{margin:0; font-weight:600}
 
 /* Trivia — question head (meta + answered count) */
 .tv-head .me:last-child{color:var(--orange)}
+/* Keep the meta row on one line: the answered/points count never wraps, and the
+   question-number-plus-topic truncates instead of breaking onto a second line. */
+.tv-head{gap:8px}
+.tv-head .me{white-space:nowrap}
+#tv-qmeta{min-width:0; overflow:hidden; text-overflow:ellipsis}
+#tv-answered{flex-shrink:0}
 
 /* Trivia — collapsible leaderboard bar, pinned under the header */
 .lead{position:sticky; top:calc(48px + env(safe-area-inset-top)); z-index:20;
