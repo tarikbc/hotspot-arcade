@@ -64,7 +64,9 @@ All control messages are framed so the link can resync after noise:
 
 > Content is opaque to the Flipper. It parses only `Key: value` blocks and ships them
 > verbatim; every game's interpretation of those keys lives in the ESP firmware, so a new
-> content game needs no protocol change.
+> content game needs no protocol change. Per-game item shapes (no new opcodes, just what
+> the ESP expects in each `CONTENT_ITEM` JSON object): trivia `{q,a,b,c,d,answer}`, wyr
+> `{a,b}` (the two options), scramble and draw `{word}` (a single plain word).
 
 **ESP -> Flipper**
 

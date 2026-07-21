@@ -28,8 +28,10 @@ reactions that float up on everyone's screen mid-game.
   in the lobby; an all-ready 5-second countdown starts it; phones buzz in A/B/C/D with
   points for correct and fast; a collapsible leaderboard rides along and a podium ends
   it. Topics are the trivia packs on the SD card.
-- **Would You Rather** — a live A/B poll; tap your pick, watch the split reveal.
+- **Would You Rather** — a live A/B poll; tap your pick, watch the split reveal. Prompts
+  are the wyr packs on the SD card, votable in the lobby.
 - **Word Scramble** — unscramble the word and type it first; fastest correct scores most.
+  Words are the scramble packs on the SD card, votable in the lobby.
 - **Reaction Duel** — fastest finger: wait for green, tap first to win, false-start and
   you're out for the round.
 
@@ -43,6 +45,8 @@ the Flipper leaderboard):
 
 - **Drawing & guessing** — one player draws on their phone canvas, everyone else guesses
   in a chat; points for the drawer and the first correct guess; rounds rotate the drawer.
+  Words are the draw packs on the SD card (no vote strip — the first pack streamed is
+  the one played).
 
 All games run on one pluggable engine on the ESP (the real-time referee), and the web
 client shares one implementation of the lobby, countdown, timer, leaderboard, and podium,

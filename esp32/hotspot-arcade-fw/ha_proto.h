@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41 // 'A'
 #define HA_FW_MAGIC_2 0x52 // 'R'
 #define HA_FW_MAGIC_3 0x43 // 'C'  ("HARC" = Hotspot ARCade)
-#define HA_FW_VERSION 9 // v9: generic content packs; the Flipper no longer parses game content
+#define HA_FW_VERSION 10 // v10: wyr/scramble/draw play from content packs
 
 // Flipper -> ESP
 enum {
