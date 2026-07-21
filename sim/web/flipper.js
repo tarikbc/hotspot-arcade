@@ -15,15 +15,29 @@ const GAMES = [
 const players = new Map(); // pid -> { nick, score }
 const feed = [];
 
+// Nicknames (and anything spliced from engine event/round JSON) are user-supplied and
+// reach us unescaped: the phone's maxlength is client-side only, the engine truncates
+// without escaping, and ha_sim.cpp's esc() only JSON-escapes quotes/backslashes/control
+// chars, not `<`/`>`. Escape at render time so a crafted nickname can't inject markup.
+function escapeHtml(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+}
+
 function render() {
   const roster = [...players.entries()]
     .sort((a, b) => b[1].score - a[1].score)
-    .map(([pid, p]) => `<tr><td>${pid}</td><td>${p.nick}</td><td>${p.score}</td></tr>`)
+    .map(([pid, p]) => `<tr><td>${pid}</td><td>${escapeHtml(p.nick)}</td><td>${p.score}</td></tr>`)
     .join("");
   document.getElementById("roster").innerHTML =
     roster || `<tr><td colspan="3" class="muted">no players</td></tr>`;
-  document.getElementById("feed").innerHTML =
-    feed.slice(-40).reverse().map((l) => `<div class="line">${l}</div>`).join("");
+  document.getElementById("feed").innerHTML = feed
+    .slice(-40)
+    .reverse()
+    .map((l) => `<div class="line">${escapeHtml(l)}</div>`)
+    .join("");
 }
 
 subscribeUart((it) => {

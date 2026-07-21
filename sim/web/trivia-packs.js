@@ -10,9 +10,10 @@
 // under "c" (NOT "a"/"correct" as an earlier draft of this file assumed).
 export function parsePack(text) {
   const out = { name: "", questions: [] };
-  for (const block of text.split(/^---$/m)) {
+  for (const block of text.split(/^---\r?$/m)) {
     const q = { q: "", o: [], c: 0 };
     let gotQ = false;
+    let gotAns = false; // mirrors trivia_stream_pack's gotAns gate in ha_session.c
     for (const raw of block.split("\n")) {
       const line = raw.trim();
       const val = (p) => line.slice(p.length).trim();
@@ -21,10 +22,13 @@ export function parsePack(text) {
       else if (/^[A-D]:/.test(line)) q.o.push(line.slice(2).trim());
       else if (line.startsWith("Answer:")) {
         const letter = val("Answer:").toUpperCase().charAt(0);
-        q.c = Math.max(0, "ABCD".indexOf(letter));
+        const idx = "ABCD".indexOf(letter);
+        if (idx >= 0) { q.c = idx; gotAns = true; }
       }
     }
-    if (gotQ && q.o.length === 4) out.questions.push(q);
+    // Match the C parser: a question with no valid A-D answer is dropped, not
+    // silently defaulted to option A.
+    if (gotQ && q.o.length === 4 && gotAns) out.questions.push(q);
   }
   return out;
 }
@@ -36,7 +40,8 @@ export async function loadSamplePacks(names = ["general", "movies", "science"]) 
     try {
       const res = await fetch(`../../trivia-packs/${n}.txt`);
       if (res.ok) packs.push(parsePack(await res.text()));
-    } catch (e) { /* pack simply unavailable; the panel shows what loaded */ }
+      else console.warn(`trivia pack "${n}" failed to load: HTTP ${res.status}`);
+    } catch (e) { console.warn(`trivia pack "${n}" failed to load:`, e); }
   }
   return packs;
 }
