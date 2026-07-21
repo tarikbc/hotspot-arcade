@@ -8,15 +8,24 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [0.2.1] - 2026-07-21
 
-Housekeeping only. No functional changes: the ESP firmware (**v6**) and the web bundle are
-byte-identical to 0.2.0, and this release exists so the published artifacts, the app-catalog
-submission, and `master` are all built from the same commit.
+### Fixed
+
+- **The released 0.2.0 `.fap` did not actually contain the ESP firmware**, so "Install
+  Firmware" could not work for anyone who installed it from the GitHub release. The
+  firmware images are bundled via `fap_file_assets`, but they were untracked build
+  artifacts at the 0.2.0 tag, so the CI `.fap` was built without them (68 KB instead of
+  ~890 KB). The images are now committed, and the 0.2.1 `.fap` carries them. Anyone on
+  0.2.0 should reinstall the app, or flash the board from a computer.
+- Release workflow: `esptool` was resolved with a glob that matches the Python *package
+  directory* on Linux, so the `merge_bin` step ran `__init__.py` and failed the release.
 
 ### Changed
 
 - Flipper sources reformatted to the official `clang-format` (app-catalog lint).
 - App-catalog metadata: manifest, changelog, and qFlipper screenshots.
 - README refreshed with screenshots and a fixed build badge.
+
+No gameplay or protocol changes. ESP firmware is still **v6**.
 
 ## [0.2.0] - 2026-07-18
 
