@@ -21,6 +21,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ESP_DIR="$REPO/esp32/hotspot-arcade-fw"
 ESP_BUILD="$ESP_DIR/build"
 ASSETS_FW="$REPO/flipper/hotspot-arcade/assets/firmware"
+ASSETS_WEB="$REPO/flipper/hotspot-arcade/assets/web"
+ASSETS_TRIVIA="$REPO/flipper/hotspot-arcade/assets/trivia"
+WEB_DIST="$REPO/web/dist"
 FQBN="esp32:esp32:esp32s2:PartitionScheme=huge_app"
 CORE_VER="2.0.17"
 
@@ -96,6 +99,32 @@ if [ ! -f "$ASSETS_FW/flash.txt" ]; then
     exit 1
 fi
 ls -la "$ASSETS_FW"
+
+# --- populate assets/web/ and assets/trivia/ ---
+# These ship inside the fap too, so a fresh install has something to serve without any
+# SD setup. Like the firmware images they are build//source copies, kept committed so
+# the app catalog (which builds flipper/hotspot-arcade/ alone, without this script) gets
+# them. Users can still override them from /ext/apps_data/hotspot_arcade/.
+echo "==> Copying web bundle into $ASSETS_WEB"
+if [ ! -f "$WEB_DIST/manifest.json" ]; then
+    echo "ERROR: $WEB_DIST/manifest.json is missing. Build it first: cd web && node build.mjs" >&2
+    exit 1
+fi
+mkdir -p "$ASSETS_WEB"
+rm -f "$ASSETS_WEB"/*.gz "$ASSETS_WEB"/manifest.json
+cp "$WEB_DIST/manifest.json" "$ASSETS_WEB/"
+# The uncompressed index.html is a debug artifact; only the .gz files are served.
+for gz in "$WEB_DIST"/*.gz; do
+    [ -f "$gz" ] && cp "$gz" "$ASSETS_WEB/"
+done
+
+echo "==> Copying trivia packs into $ASSETS_TRIVIA"
+mkdir -p "$ASSETS_TRIVIA"
+rm -f "$ASSETS_TRIVIA"/*.txt
+for pack in "$REPO"/trivia-packs/*.txt; do
+    [ -f "$pack" ] && cp "$pack" "$ASSETS_TRIVIA/"
+done
+ls -la "$ASSETS_WEB" "$ASSETS_TRIVIA"
 
 # --- build the fap (bundles assets/) ---
 echo "==> Running ufbt"
