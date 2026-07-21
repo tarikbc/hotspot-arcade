@@ -93,6 +93,10 @@ export const engine = {
   triviaClear: () => { call("ha_trivia_clear", [], []); drain(); },
   triviaAddTopic: (n) => { call("ha_trivia_add_topic", ["string"], [n]); drain(); },
   triviaAddQ: (j) => { call("ha_trivia_add_q", ["string"], [j]); drain(); },
+  // Generic content ingest — the way every pack game (trivia/wyr/scramble/draw) is fed.
+  contentClear: () => { call("ha_content_clear", [], []); drain(); },
+  contentPack: (game, name) => { call("ha_content_pack", ["number", "string"], [game, name]); drain(); },
+  contentItem: (json) => { call("ha_content_item", ["string"], [json]); drain(); },
 };
 
 export function subscribeUart(fn) { uartSubscribers.push(fn); }

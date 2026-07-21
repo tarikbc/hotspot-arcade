@@ -3,7 +3,17 @@
 // the 128x64 screen — reimplementing the scenes would be a second implementation
 // of the Flipper UI, the same drift trap the WASM engine exists to avoid.
 import { engine, subscribeUart } from "./harness.js";
-import { loadSamplePacks } from "./trivia-packs.js";
+import { loadGamePacks } from "./trivia-packs.js";
+
+// What the real Flipper streams: every packs/<game>/ directory, tagged with its game
+// id. Mirrors ha_content_stream_packs in ha_session.c so the sim exercises all four
+// content games, not just trivia.
+const PACK_DIRS = [
+  { game: 1, dir: "trivia", names: ["general", "movies", "science"] },
+  { game: 8, dir: "wyr", names: ["everyday", "spooky", "spicy"] },
+  { game: 9, dir: "scramble", names: ["classic", "animals"] },
+  { game: 5, dir: "draw", names: ["classic", "movies"] },
+];
 
 // Ids copied verbatim from flipper/hotspot-arcade/ha_proto.h (HA_GAME_*).
 const GAMES = [
@@ -59,7 +69,7 @@ export async function mountFlipper(el) {
       <button id="round">Round end</button>
       <button id="zero">Reset scores</button>
     </div>
-    <div class="row"><button id="packs">Load trivia packs</button>
+    <div class="row"><button id="packs">Load packs</button>
       <span id="packstate" class="muted">no packs loaded</span></div>
     <table class="roster"><thead><tr><th>pid</th><th>nick</th><th>score</th></tr></thead>
       <tbody id="roster"></tbody></table>
@@ -75,14 +85,16 @@ export async function mountFlipper(el) {
     render();
   };
   document.getElementById("packs").onclick = async () => {
-    const packs = await loadSamplePacks();
-    engine.triviaClear();
-    for (const pack of packs) {
-      engine.triviaAddTopic(pack.name);
-      for (const q of pack.questions) engine.triviaAddQ(JSON.stringify(q));
+    engine.contentClear();
+    let packCount = 0;
+    let itemCount = 0;
+    for (const g of PACK_DIRS) {
+      const loaded = await loadGamePacks(engine, g.game, g.dir, g.names);
+      packCount += loaded.length;
+      itemCount += loaded.reduce((n, p) => n + p.count, 0);
     }
     document.getElementById("packstate").textContent =
-      `${packs.length} packs, ${packs.reduce((n, p) => n + p.questions.length, 0)} questions`;
+      `${packCount} packs, ${itemCount} items (all games)`;
   };
   render();
 }

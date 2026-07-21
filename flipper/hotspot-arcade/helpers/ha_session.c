@@ -267,16 +267,40 @@ static void ha_content_stream_packs(HotspotArcadeApp* app) {
     ha_proto_send(app->uart, HA_MSG_CONTENT_CLEAR, NULL, 0);
     furi_delay_ms(2);
     Storage* storage = furi_record_open(RECORD_STORAGE);
+    // `seen`/`topics` de-duplicate and cap packs PER GAME (each game stores its own
+    // set on the ESP), so every game restarts `topics` at 0. The streaming itself is
+    // generic — only the directory it reads and the game byte it tags differ.
     char seen[HA_MAX_TOPICS][80];
-    int topics = 0;
     FuriString* dir = furi_string_alloc();
 
+    // Trivia: packs/trivia (user, then bundled) plus the legacy trivia-only dirs, all
+    // under one cap so a pack appearing in several is streamed once. User wins a clash.
+    int topics = 0;
     furi_string_printf(dir, "%s/trivia", HA_USER_PACKS_DIR);
     ha_content_stream_dir(app, storage, furi_string_get_cstr(dir), HA_GAME_TRIVIA, seen, &topics);
     furi_string_printf(dir, "%s/trivia", HA_BUNDLED_PACKS_DIR);
     ha_content_stream_dir(app, storage, furi_string_get_cstr(dir), HA_GAME_TRIVIA, seen, &topics);
     ha_content_stream_dir(app, storage, HA_USER_TRIVIA_DIR, HA_GAME_TRIVIA, seen, &topics);
     ha_content_stream_dir(app, storage, HA_BUNDLED_TRIVIA_DIR, HA_GAME_TRIVIA, seen, &topics);
+
+    // The other pack games. Same user-before-bundled precedence; each its own cap.
+    // Without this the packs bundled for wyr/scramble/draw never reach the ESP and
+    // those games start empty.
+    static const struct {
+        uint8_t game;
+        const char* sub;
+    } more[] = {
+        {HA_GAME_WYR, "wyr"},
+        {HA_GAME_SCRAMBLE, "scramble"},
+        {HA_GAME_DRAW, "draw"},
+    };
+    for(unsigned g = 0; g < sizeof(more) / sizeof(more[0]); g++) {
+        topics = 0;
+        furi_string_printf(dir, "%s/%s", HA_USER_PACKS_DIR, more[g].sub);
+        ha_content_stream_dir(app, storage, furi_string_get_cstr(dir), more[g].game, seen, &topics);
+        furi_string_printf(dir, "%s/%s", HA_BUNDLED_PACKS_DIR, more[g].sub);
+        ha_content_stream_dir(app, storage, furi_string_get_cstr(dir), more[g].game, seen, &topics);
+    }
 
     furi_string_free(dir);
     furi_record_close(RECORD_STORAGE);

@@ -65,7 +65,7 @@ export function parsePack(text, fallbackName = "") {
   return out;
 }
 
-/** Load the repo's sample packs through the harness's HTTP server. */
+/** Load the repo's sample trivia packs through the harness's HTTP server. */
 export async function loadSamplePacks(names = ["general", "movies", "science"]) {
   const packs = [];
   for (const n of names) {
@@ -76,4 +76,47 @@ export async function loadSamplePacks(names = ["general", "movies", "science"]) 
     } catch (e) { console.warn(`trivia pack "${n}" failed to load:`, e); }
   }
   return packs;
+}
+
+// Generic block parser — the faithful mirror of the CURRENT Flipper (ha_session.c's
+// content_stream_pack): "Key: value" lines, a "---" or blank line ends a block, a
+// "Pack:" line names the pack. Each block becomes an object of the file's own
+// lowercased keys, exactly what the engine's per-game loadItem expects. This works
+// for every game (trivia {q,a,b,c,d,answer}, wyr {a,b}, scramble/draw {word}) because
+// the Flipper never interprets the keys.
+export function parseGenericPack(text, fallbackName = "") {
+  let name = fallbackName;
+  const items = [];
+  let cur = {};
+  let any = false;
+  const flush = () => { if (any) items.push(cur); cur = {}; any = false; };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line === "" || line === "---") { flush(); continue; }
+    const c = line.indexOf(":");
+    if (c < 0) continue;
+    const key = line.slice(0, c).trim().toLowerCase();
+    const val = line.slice(c + 1).trim();
+    if (key === "pack") { if (val) name = val; continue; }
+    if (key) { cur[key] = val; any = true; }
+  }
+  flush();
+  return { name, items };
+}
+
+// Stream one game's packs into the engine the way the Flipper does: contentPack to
+// begin, contentItem per block. Returns [{name, count}] for the panel to report.
+export async function loadGamePacks(engine, game, dir, names) {
+  const loaded = [];
+  for (const n of names) {
+    try {
+      const res = await fetch(`../../packs/${dir}/${n}.txt`);
+      if (!res.ok) { console.warn(`${dir} pack "${n}": HTTP ${res.status}`); continue; }
+      const pk = parseGenericPack(await res.text(), n);
+      engine.contentPack(game, pk.name);
+      for (const it of pk.items) engine.contentItem(JSON.stringify(it));
+      loaded.push({ name: pk.name, count: pk.items.length });
+    } catch (e) { console.warn(`${dir} pack "${n}":`, e); }
+  }
+  return loaded;
 }
