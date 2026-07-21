@@ -35,6 +35,7 @@ static inline void ha_upper(char* s) {
 
 #define TRIVIA_MAX_TOPICS 6
 #define TRIVIA_MAX_QS 20
+#define PACK_MAX_ITEMS 32 // items in a word/prompt pack (wyr/scramble/draw)
 #define TRIVIA_QDUR 20 // seconds per question (safety timer)
 #define TRIVIA_COUNTDOWN 5 // seconds after all-ready before the first question
 #define TRIVIA_REVEAL_MS 4000 // pause on the reveal before the next question
@@ -159,12 +160,24 @@ struct Party {
     uint32_t revealUntil; // reveal end
 };
 
-// Would You Rather: a live A/B poll, one prompt per round, no scoring.
+// Would You Rather: a live A/B poll. Prompts come from the voted pack.
+struct WyrPrompt {
+    String a, b;
+};
+struct WyrPack {
+    String name;
+    WyrPrompt items[PACK_MAX_ITEMS];
+    uint8_t count;
+};
 struct WyrState {
     Party pt;
-    uint8_t promptSeq; // rotates prompts across games
-    uint8_t prompt; // current prompt index
-    int8_t vote[HA_MAX_PLAYERS + 1]; // 0/1, -1 = not voted
+    WyrPack packs[TRIVIA_MAX_TOPICS]; // pack cap mirrors trivia's topic cap (HA_MAX_TOPICS on the Flipper side)
+    uint8_t packCount;
+    int8_t vote[HA_MAX_PLAYERS + 1]; // pack index, -1 = not voted
+    uint8_t pack; // chosen pack index (locked in when the round starts)
+    uint8_t promptSeq; // rotates prompts across rounds within the pack
+    uint8_t prompt; // current prompt index within the chosen pack
+    int8_t choice[HA_MAX_PLAYERS + 1]; // A/B vote for the current prompt, -1 = none
 };
 
 // Word scramble race: everyone unscrambles the same word; fastest correct win most.
@@ -313,17 +326,27 @@ public:
     // a content game needs a loader below and nothing on the Flipper.
     void contentClear() {
         triviaTopicsClear();
+        _wyr.packCount = 0;
         _packGame = 0;
     }
 
     void contentPack(uint8_t game, const char* name) {
         _packGame = game;
-        if(game == HA_GAME_TRIVIA) triviaAddTopic(name);
+        if(game == HA_GAME_TRIVIA) {
+            triviaAddTopic(name);
+        } else if(game == HA_GAME_WYR) {
+            if(_wyr.packCount < TRIVIA_MAX_TOPICS) {
+                _wyr.packs[_wyr.packCount] = WyrPack{};
+                _wyr.packs[_wyr.packCount].name = name;
+                _wyr.packCount++;
+            }
+        }
     }
 
     void contentItem(const char* json) {
         if(!_packGame) return; // no pack begun: nothing to attach to
         if(_packGame == HA_GAME_TRIVIA) triviaLoadItem(json);
+        else if(_packGame == HA_GAME_WYR) wyrLoadItem(json);
         // Unknown game ids are dropped on purpose: a newer Flipper must not be able
         // to corrupt an older board's state.
     }
@@ -357,6 +380,21 @@ public:
 
         tp.qs[tp.qcount] = q;
         tp.qcount++;
+        return true;
+    }
+
+    // Map a wyr pack file's {a,b} keys into a WyrPrompt in the current pack.
+    bool wyrLoadItem(const char* json) {
+        if(_wyr.packCount == 0) return false;
+        WyrPack& p = _wyr.packs[_wyr.packCount - 1];
+        if(p.count >= PACK_MAX_ITEMS) return false;
+        char buf[128];
+        if(!ha_json_str(json, "a", buf, sizeof(buf))) return false;
+        String a = buf;
+        if(!ha_json_str(json, "b", buf, sizeof(buf))) return false;
+        p.items[p.count].a = a;
+        p.items[p.count].b = buf;
+        p.count++;
         return true;
     }
 
@@ -1830,32 +1868,37 @@ private:
     }
 
     // ---------- would you rather (live A/B poll) ----------
-    static int wyrPromptCount() { return 12; }
-    static void wyrPromptText(int i, const char*& a, const char*& b) {
-        static const char* p[][2] = {
-            {"Be able to fly", "Be invisible"},
-            {"Read minds", "See the future"},
-            {"Always be 10 min early", "Always be 5 min late"},
-            {"Never use the internet again", "Never watch films again"},
-            {"Fight one horse-sized duck", "100 duck-sized horses"},
-            {"Live without music", "Live without TV"},
-            {"Have unlimited pizza", "Have unlimited tacos"},
-            {"Teleport anywhere", "Time travel"},
-            {"Talk to animals", "Speak every language"},
-            {"Always be too hot", "Always be too cold"},
-            {"No phone for a week", "No coffee for a month"},
-            {"Explore space", "Explore the deep ocean"},
-        };
-        int n = wyrPromptCount();
-        i = ((i % n) + n) % n;
-        a = p[i][0];
-        b = p[i][1];
+    // Which pack wins the pre-round vote, mirroring triviaWinningTopic(): most
+    // votes wins, ties broken at random, and an untallied vote (total == 0)
+    // picks uniformly at random among all packs. Guard packCount == 0 so an
+    // empty game (no packs streamed yet) never indexes out of range.
+    int wyrWinningPack() {
+        if(_wyr.packCount == 0) return 0;
+        int votes[TRIVIA_MAX_TOPICS] = {0};
+        int total = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _wyr.vote[i] >= 0 && _wyr.vote[i] < _wyr.packCount) {
+                votes[_wyr.vote[i]]++;
+                total++;
+            }
+        if(total == 0) return (int)random(_wyr.packCount);
+        int best = 0;
+        for(int i = 1; i < _wyr.packCount; i++)
+            if(votes[i] > votes[best]) best = i;
+        int tie[TRIVIA_MAX_TOPICS], tn = 0;
+        for(int i = 0; i < _wyr.packCount; i++)
+            if(votes[i] == votes[best]) tie[tn++] = i;
+        return tie[(int)random(tn)];
     }
 
     void wyrClear() {
         partyClear(_wyr.pt);
         _wyr.prompt = 0;
-        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _wyr.vote[i] = -1;
+        _wyr.pack = 0;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _wyr.vote[i] = -1;
+            _wyr.choice[i] = -1;
+        }
     }
 
     void wyrReady(uint8_t pid, bool val) {
@@ -1883,7 +1926,7 @@ private:
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
             if(!_p[i].used) continue;
             n++;
-            if(_wyr.vote[i] < 0) return false;
+            if(_wyr.choice[i] < 0) return false;
         }
         return n >= 1;
     }
@@ -1895,10 +1938,16 @@ private:
             pushAll();
             return;
         }
+        WyrPack& pk = _wyr.packs[_wyr.pack];
+        if(pk.count == 0) { // empty pack: nothing to play, end the game
+            pt.phase = 4;
+            pushAll();
+            return;
+        }
         pt.round++;
-        _wyr.prompt = _wyr.promptSeq % wyrPromptCount();
+        _wyr.prompt = _wyr.promptSeq % pk.count;
         _wyr.promptSeq++;
-        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _wyr.vote[i] = -1;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _wyr.choice[i] = -1;
         pt.phase = 2;
         pt.deadline = now + (uint32_t)WYR_VOTE_SECS * 1000;
         pushAll();
@@ -1907,7 +1956,7 @@ private:
     void wyrAnswer(uint8_t pid, int c) {
         if(_active != HA_GAME_WYR || _wyr.pt.phase != 2) return;
         if(c != 0 && c != 1) return;
-        _wyr.vote[pid] = (int8_t)c;
+        _wyr.choice[pid] = (int8_t)c;
         if(wyrAllVoted()) wyrReveal(millis());
         else pushAll();
     }
@@ -1930,6 +1979,9 @@ private:
         if(pt.phase == 1) {
             if(partyCountdownDone(pt, now)) {
                 pt.round = 0;
+                // Lock in the winning pack now (votes are frozen during the
+                // countdown), mirroring trivia's topic lock.
+                _wyr.pack = (uint8_t)wyrWinningPack();
                 wyrNextPrompt(now);
             }
         } else if(pt.phase == 2) {
@@ -1949,18 +2001,19 @@ private:
                    partyCountdownSec(pt) + "}";
         if(pt.phase == 4)
             return String("{\"t\":\"wyr\",\"phase\":\"final\",\"you\":") + pid + "}";
-        const char *a, *b;
-        wyrPromptText(_wyr.prompt, a, b);
+        WyrPack& pk = _wyr.packs[_wyr.pack];
+        const char* a = pk.items[_wyr.prompt].a.c_str();
+        const char* b = pk.items[_wyr.prompt].b.c_str();
         int cA = 0, cB = 0;
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
             if(!_p[i].used) continue;
-            if(_wyr.vote[i] == 0) cA++;
-            else if(_wyr.vote[i] == 1) cB++;
+            if(_wyr.choice[i] == 0) cA++;
+            else if(_wyr.choice[i] == 1) cB++;
         }
         String s = String("{\"t\":\"wyr\",\"phase\":\"") + (pt.phase == 3 ? "reveal" : "vote") +
                    "\",\"round\":" + pt.round + ",\"rounds\":" + WYR_ROUNDS + ",\"a\":\"" +
                    ha_json_escape(a) + "\",\"b\":\"" + ha_json_escape(b) + "\",\"myvote\":" +
-                   _wyr.vote[pid] + ",\"counts\":[" + cA + "," + cB + "]";
+                   _wyr.choice[pid] + ",\"counts\":[" + cA + "," + cB + "]";
         if(pt.phase == 2) {
             s += ",\"deadline\":";
             s += pt.deadline;

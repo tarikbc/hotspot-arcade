@@ -153,4 +153,31 @@ assert.equal(brokenQ.msg.n, 0, "zero questions were committed from the malformed
 assert.ok(brokenQ.msg.o.every((opt) => opt === ""), "no option text leaked from a half-built question");
 assert.equal(brokenQ.msg.q, "", "no question text leaked from a half-built question");
 
+// --- Would You Rather ingests {a,b} prompt pairs -----------------------------
+// The file's keys are the option texts; wyrLoadItem stores them as a prompt pair.
+// A block missing either option is not a usable prompt and must be dropped.
+{
+  const HA_GAME_WYR = 8;
+  e.reset();
+  e.contentClear();
+  e.contentPack(HA_GAME_WYR, "Spooky");
+  e.contentItem(JSON.stringify({ a: "Be haunted forever", b: "Haunt someone forever" }));
+  e.contentItem(JSON.stringify({ a: "only one option" })); // dropped
+  e.selectGame(HA_GAME_WYR);
+  e.join(1, "ana");
+  e.join(2, "bo");
+  e.input(1, { t: "ready", ready: true });
+  e.input(2, { t: "ready", ready: true });
+  let seen = [];
+  for (let ms = 1000; ms <= 8000; ms += 1000) seen = seen.concat(e.tick(ms));
+  const round = seen.filter((o) => o.to === "ws" && o.msg && o.msg.t === "wyr").pop();
+  assert.ok(round, "a wyr round message reached a player");
+  const opts = JSON.stringify(round.msg);
+  assert.ok(
+    opts.includes("Be haunted forever") && opts.includes("Haunt someone forever"),
+    "the round shows the pack's prompt, not a hardcoded one",
+  );
+  assert.ok(!opts.includes("only one option"), "the malformed prompt was dropped");
+}
+
 console.log("content: OK");
