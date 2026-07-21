@@ -30,3 +30,6 @@ CLAUDE.md
 flipper/hotspot-arcade/.clang-format
 .superpowers/
 .playwright-mcp/
+
+# Planning docs from the superpowers workflow are kept locally, not committed.
+docs/superpowers/
