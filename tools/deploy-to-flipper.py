@@ -134,6 +134,11 @@ def main():
         )
 
     packs = pack_files()
+    # Packs are optional (unlike the web bundle, which hard-fails above), but say so
+    # out loud: a silent zero-pack run is exactly the bug that pointing at the emptied
+    # trivia-packs/ dir used to cause, and "0 files" in the summary looks identical to it.
+    if not packs:
+        print("no content packs found under packs/ — skipping (this is fine if intentional)")
 
     s = serial.Serial(args.port, timeout=3)
     time.sleep(0.2)
