@@ -36,7 +36,7 @@ let M;
 try {
   const { default: createEngine } = await import("./engine.js");
   M = await createEngine();
-} catch (e) {
+} catch {
   fatal("Engine failed to load. Run <code>sim/engine/build.sh</code> first.");
 }
 const uartSubscribers = [];
@@ -45,11 +45,39 @@ let nextPhoneId = 1;
 const call = (name, argTypes, args) => M.ccall(name, null, argTypes, args);
 const drainRaw = () => JSON.parse(M.ccall("ha_drain", "string", [], []));
 
-function route(items) {
+function routeNow(items) {
   for (const it of items) {
     if (it.to === "ws") deliver(it.id, JSON.stringify(it.msg));
     else if (it.to === "all") broadcast(JSON.stringify(it.msg));
     else if (it.to === "uart") uartSubscribers.forEach((fn) => fn(it));
+  }
+}
+
+// route() synchronously calls into a client's onmessage (via deliver/broadcast above).
+// If a client ever sent a message from inside its own onmessage handler, that send
+// would flow through engine.input -> drain() -> route() and nest inside this loop --
+// so a later recipient in the OUTER batch could end up receiving a message produced by
+// a NESTED, logically-later input before it gets the rest of its own (earlier) batch.
+// On hardware the whole batch is queued and drained in order; nothing interleaves like
+// that. Not reachable today (every client send here is behind a user gesture, so there
+// is no in-page code path that sends from inside onmessage), but it's cheap to guard:
+// a nested call while already routing enqueues its items instead of recursing, and the
+// outer call drains the queue (a trampoline) once its own batch is done, so batches
+// never interleave.
+let routing = false;
+const pendingRoutes = [];
+
+function route(items) {
+  if (routing) {
+    pendingRoutes.push(items);
+    return;
+  }
+  routing = true;
+  try {
+    routeNow(items);
+    while (pendingRoutes.length) routeNow(pendingRoutes.shift());
+  } finally {
+    routing = false;
   }
 }
 
@@ -101,7 +129,7 @@ export function addPhone() {
     let ok = false;
     try {
       ok = !!frame.contentDocument && frame.contentDocument.title === "Hotspot Arcade";
-    } catch (e) {
+    } catch {
       ok = true; // cross-origin: can't inspect it, assume the real client loaded
     }
     if (!ok) fatal("Client not built. Run <code>cd web && node build.mjs</code> first.");
@@ -118,9 +146,15 @@ export function removePhone() {
   // AsyncWebServer disconnect) had gotten there first. That single path tells the engine
   // the player went away and drops the socket from phones.js's map, and close()'s own
   // guard means it's harmless if the client also calls close() around the same time.
-  const sock = getSocket(wsId);
-  if (sock) sock.close();
-  wrap.remove();
+  // wrap.remove() must run even if sock.close() throws (e.g. a bad onclose handler),
+  // otherwise a stale panel is left in the DOM with no way to remove it -- try/finally,
+  // not a swallowing catch, since we still want the throw to surface.
+  try {
+    const sock = getSocket(wsId);
+    if (sock) sock.close();
+  } finally {
+    wrap.remove();
+  }
 }
 
 // Engine clock. The firmware ticks from millis(); here rAF drives it.

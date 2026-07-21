@@ -36,8 +36,26 @@ silently corrupts a neighbour; under ASan it aborts at the line.
 No WiFi, no ESP heap accounting, no UART timing — the 8-phone scale test still needs
 hardware. The Flipper panel shows UART traffic, not the real 1-bit screens.
 
+All phone panels share one browser origin (and so one `localStorage`): a returning
+"player" auto-rejoins under whatever nickname was last saved to that shared storage.
+That's a simulator artifact of running every panel in one page, not an engine
+behaviour — the real phones each have their own storage.
+
+`loadSamplePacks()` (`flipper.js`) has a hardcoded pack list (`general`, `movies`,
+`science`). A new file dropped into `trivia-packs/` will not show up in the "Load
+trivia packs" button until that list is updated by hand.
+
 ## Fidelity
 
-Game rules come from the real engine, so they cannot drift. The one exception is the
-trivia pack text parser (`trivia-packs.js`), which duplicates the C parser in
-`ha_session.c`; see `docs/superpowers/specs/2026-07-21-sim-harness-design.md`.
+Game rules come from the real engine, so they cannot drift. Several smaller things
+are still hand-copied from the firmware and can drift if only one side is updated:
+
+- The trivia pack text parser (`trivia-packs.js`), which mirrors `trivia_stream_pack`
+  in `ha_session.c` line for line; see
+  `docs/superpowers/specs/2026-07-21-sim-harness-design.md`.
+- The `HA_GAME_*` id table (`flipper.js`'s `GAMES` array), copied from
+  `flipper/hotspot-arcade/ha_proto.h`. Adding a game to the firmware means adding it
+  to `GAMES` too, or the Flipper panel's game picker won't offer it.
+- `MAX_PHONES` (`phones.js`), copied from `AP_MAX_CONN` in the `.ino`.
+- `WS_MSG_MAX` (`phones.js`), copied from the `.ino`'s same-named constant, used to
+  drop oversized WebSocket sends the way the firmware does.

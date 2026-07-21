@@ -6,7 +6,7 @@
 //   - A move's column is keyed "n" (`ha_json_int(json, "n", &v)` -> duelMove(pid, v)),
 //     not "c".
 import assert from "node:assert/strict";
-import { newEngine } from "./harness-lib.mjs";
+import { newEngine, lastToWs } from "./harness-lib.mjs";
 
 const HA_GAME_C4 = 2; // HA_GAME_CONNECT4 in ha_proto.h
 
@@ -16,10 +16,18 @@ e.selectGame(HA_GAME_C4);
 e.join(1, "ana");
 e.join(2, "bo");
 
+// Verified against Engine::matchChallenge in esp32/hotspot-arcade-fw/ha_games.h
+// (around line 892): a challenge sends a one-off "{"t":"toast",...}" unicast to the
+// challenged player only (haWsSendWs(_p[to].wsId, ...)), naming the challenger, before
+// falling through to pushAll()'s per-socket "duel" lobby push to everyone. The toast is
+// the one message that only reaches the challenged player, so assert on that rather
+// than "something was emitted" (true for nearly any non-early-return).
 const challenged = e.input(1, { t: "challenge", to: 2 });
+const toast = lastToWs(challenged, 2, "toast");
+assert.ok(toast, "challenging sends a toast to the challenged player (socket 2)");
 assert.ok(
-  challenged.some((o) => o.to === "ws" || o.to === "all"),
-  "challenging emits something to the clients",
+  toast.msg.msg.includes("ANA"), // ha_games.h uppercases nicks on hello
+  "the toast names the challenger",
 );
 
 e.input(2, { t: "accept", from: 1 });
