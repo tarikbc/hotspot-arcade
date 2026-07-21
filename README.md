@@ -180,6 +180,26 @@ The deploy script pushes the fap to `/ext/apps/GPIO/` and your working copies of
 bundle and trivia packs to `/ext/apps_data/hotspot_arcade/`, where they override the
 bundled ones — so you can iterate on the web client without rebuilding the fap.
 
+## Development
+
+You don't need a Flipper or an ESP board to work on the games. `sim/` compiles the
+**real** ESP game engine (`esp32/hotspot-arcade-fw/ha_games.h`) to WebAssembly and runs it
+in a browser page, with 2–8 phone panels (each an iframe of the real phone client) plus a
+data-faithful Flipper panel — enough to play and design games solo. It exists because an
+earlier JS reimplementation of the game rules drifted four games behind the firmware;
+running the real engine means it can't drift.
+
+```sh
+brew install emscripten     # one-time
+cd web && node build.mjs     # build the phone client
+cd .. && sim/engine/build.sh # build the engine
+sim/serve.sh                 # -> http://localhost:8123/sim/web/
+```
+
+Headless tests: `sim/test/all.sh`. Memory-bug hunting: `sim/engine/build.sh --asan &&
+sim/test/all.sh`. Full docs, including caveats and what still has to be hand-kept in sync
+with the firmware, in [sim/README.md](sim/README.md).
+
 ## Usage
 
 On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
@@ -217,6 +237,7 @@ esp32/hotspot-arcade-fw/  ESP32-S2 firmware (Arduino) — AP + web + WebSocket r
 esp32/libs/               vendored AsyncTCP + ESPAsyncWebServer
 web/                      phone game client (vanilla JS, gzipped bundle)
 packs/                    content packs, one dir per game (trivia today)
+sim/                      browser simulator — real engine compiled to WASM, no hardware
 tools/deploy-to-flipper.py
 docs/                     ARCHITECTURE.md, PROTOCOL.md
 ```
