@@ -18,3 +18,16 @@ main { display: flex; gap: 14px; padding: 14px; align-items: flex-start; }
            border-radius: 10px; padding: 12px; position: sticky; top: 14px; }
 #flipper h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase;
               letter-spacing: .08em; color: #8b90a0; }
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+select { font: inherit; background: #2b2e39; color: #e6e6e6; border: 1px solid #3a3e4d;
+         border-radius: 6px; padding: 5px; }
+.muted { color: #8b90a0; font-size: 12px; }
+table.roster { width: 100%; border-collapse: collapse; margin: 8px 0 4px; }
+table.roster th { text-align: left; font-size: 11px; color: #8b90a0; font-weight: 400; }
+table.roster td { padding: 2px 0; border-top: 1px solid #2b2e39; }
+#flipper h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+              color: #8b90a0; margin: 12px 0 6px; }
+.feed { height: 260px; overflow-y: auto; background: #14151a; border: 1px solid #2b2e39;
+        border-radius: 6px; padding: 6px; font-size: 11px; }
+.feed .line { padding: 1px 0; border-bottom: 1px solid #1d1f27; white-space: pre-wrap;
+              word-break: break-all; }

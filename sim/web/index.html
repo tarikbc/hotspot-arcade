@@ -13,11 +13,13 @@
   <section id="phones"></section>
   <aside id="flipper">
     <h2>Flipper</h2>
-    <div id="flipper-body"><em>Task 5 fills this in.</em></div>
+    <div id="flipper-body"></div>
   </aside>
 </main>
 <script type="module">
   import { addPhone, removePhone } from "./harness.js";
+  import { mountFlipper } from "./flipper.js";
   document.getElementById("add").onclick = addPhone;
   document.getElementById("remove").onclick = removePhone;
+  mountFlipper(document.getElementById("flipper-body"));
 </script>
