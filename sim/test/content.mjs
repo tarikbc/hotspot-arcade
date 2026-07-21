@@ -278,4 +278,29 @@ assert.equal(brokenQ.msg.q, "", "no question text leaked from a half-built quest
   assert.ok(wordMsgs.length >= 1, "the drawer was given the pack's word");
 }
 
+// --- pack vote decides which pack plays --------------------------------------
+{
+  const HA_GAME_WYR = 8;
+  e.reset();
+  e.contentClear();
+  e.contentPack(HA_GAME_WYR, "Everyday");
+  e.contentItem(JSON.stringify({ a: "Tea", b: "Coffee" }));
+  e.contentPack(HA_GAME_WYR, "Spooky");
+  e.contentItem(JSON.stringify({ a: "Ghosts", b: "Zombies" }));
+  e.selectGame(HA_GAME_WYR);
+  e.join(1, "ana");
+  e.join(2, "bo");
+  // Both vote the second pack (index 1), then ready up.
+  e.input(1, { t: "vote", pack: 1 });
+  e.input(2, { t: "vote", pack: 1 });
+  e.input(1, { t: "ready", ready: true });
+  e.input(2, { t: "ready", ready: true });
+  let seen = [];
+  for (let ms = 1000; ms <= 8000; ms += 1000) seen = seen.concat(e.tick(ms));
+  const round = seen.filter((o) => o.to === "ws" && o.msg && o.msg.t === "wyr").pop();
+  const txt = JSON.stringify(round.msg);
+  assert.ok(txt.includes("Ghosts") || txt.includes("Zombies"), "the voted (Spooky) pack was played");
+  assert.ok(!txt.includes("Tea") && !txt.includes("Coffee"), "the un-voted pack was not played");
+}
+
 console.log("content: OK");

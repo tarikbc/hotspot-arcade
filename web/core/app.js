@@ -171,6 +171,31 @@ A.readyLobby = function (cfg) {
   return mine;
 };
 
+// Shared pack-vote strip for the party games (Would You Rather, Word Scramble).
+// Mirrors trivia's own inline topic-vote block (see trivia.js renderLobby),
+// just generalized: `cfg` names the container element, the packs list
+// ({name,votes}), the caller's current vote index, and a send callback, so
+// every pack-driven game votes the same way trivia already votes topics.
+A.packVote = function (cfg) {
+  var box = $(cfg.boxId);
+  if (!box) return;
+  box.innerHTML = "";
+  (cfg.packs || []).forEach(function (p, i) {
+    var b = document.createElement("button");
+    b.className = "topic" + (cfg.myvote === i ? " mine" : "");
+    // Pack names are committed content, not player input, but esc() anyway --
+    // cheap, and it keeps "never build innerHTML from an unescaped string" uniform.
+    b.innerHTML =
+      '<span class="txt">' + esc(p.name) + "</span>" +
+      '<span class="votes">' + (p.votes || 0) + "</span>";
+    b.addEventListener("click", function () {
+      A.sfx("buzz"); A.vibe(12);
+      cfg.onVote(i);
+    });
+    box.appendChild(b);
+  });
+};
+
 // Countdown number with a per-second tick + pop animation.
 A.countdown = function (numId, sec) {
   var n = $(numId);

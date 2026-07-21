@@ -14,6 +14,11 @@
   function renderLobby(m) {
     sub("lobby");
     myready = A.readyLobby({ players: m.players, listId: "wyr-players", readyId: "wyr-ready", meId: "wyr-me" });
+    A.packVote({
+      boxId: "wyr-topics",
+      packs: m.packs, myvote: m.myvote,
+      onVote: function (i) { send({ t: "vote", pack: i }); },
+    });
   }
 
   function renderCount(m) {

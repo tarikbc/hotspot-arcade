@@ -527,6 +527,9 @@ public:
             reactReady(pid, r);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "topic", &v)) {
             triviaVote(pid, v);
+        } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "pack", &v)) {
+            wyrVote(pid, v);
+            scrambleVote(pid, v);
         } else if(strcmp(type, "tap") == 0) {
             reactTap(pid);
         } else if(strcmp(type, "again") == 0) {
@@ -1984,6 +1987,13 @@ private:
         pushAll();
     }
 
+    void wyrVote(uint8_t pid, int pack) {
+        if(_active != HA_GAME_WYR || _wyr.pt.phase != 0) return;
+        if(pack < 0 || pack >= _wyr.packCount) return;
+        _wyr.vote[pid] = (int8_t)pack;
+        pushAll();
+    }
+
     void wyrCheckStart() {
         Party& pt = _wyr.pt;
         if(pt.phase == 0 && _wyr.packCount > 0 && partyAllReady(pt)) {
@@ -2067,9 +2077,21 @@ private:
 
     String wyrJson(uint8_t pid) {
         Party& pt = _wyr.pt;
-        if(pt.phase == 0)
-            return String("{\"t\":\"wyr\",\"phase\":\"lobby\",\"you\":") + pid +
-                   ",\"players\":" + partyPlayersJson(pt) + "}";
+        if(pt.phase == 0) {
+            String s = String("{\"t\":\"wyr\",\"phase\":\"lobby\",\"you\":") + pid +
+                       ",\"players\":" + partyPlayersJson(pt);
+            s += ",\"packs\":[";
+            int votes[TRIVIA_MAX_TOPICS] = {0};
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && _wyr.vote[i] >= 0 && _wyr.vote[i] < _wyr.packCount) votes[_wyr.vote[i]]++;
+            for(int i = 0; i < _wyr.packCount; i++) {
+                if(i) s += ",";
+                s += "{\"name\":\"" + ha_json_escape(_wyr.packs[i].name.c_str()) + "\",\"votes\":" + votes[i] + "}";
+            }
+            s += "],\"myvote\":" + String((int)_wyr.vote[pid]);
+            s += "}";
+            return s;
+        }
         if(pt.phase == 1)
             return String("{\"t\":\"wyr\",\"phase\":\"countdown\",\"sec\":") +
                    partyCountdownSec(pt) + "}";
@@ -2155,6 +2177,13 @@ private:
         if(_scr.pt.phase == 4 && val) scrambleClear();
         _scr.pt.ready[pid] = val;
         scrambleCheckStart();
+        pushAll();
+    }
+
+    void scrambleVote(uint8_t pid, int pack) {
+        if(_active != HA_GAME_SCRAMBLE || _scr.pt.phase != 0) return;
+        if(pack < 0 || pack >= _scr.packCount) return;
+        _scr.vote[pid] = (int8_t)pack;
         pushAll();
     }
 
@@ -2258,9 +2287,21 @@ private:
 
     String scrambleJson(uint8_t pid) {
         Party& pt = _scr.pt;
-        if(pt.phase == 0)
-            return String("{\"t\":\"scramble\",\"phase\":\"lobby\",\"you\":") + pid +
-                   ",\"players\":" + partyPlayersJson(pt) + "}";
+        if(pt.phase == 0) {
+            String s = String("{\"t\":\"scramble\",\"phase\":\"lobby\",\"you\":") + pid +
+                       ",\"players\":" + partyPlayersJson(pt);
+            s += ",\"packs\":[";
+            int votes[TRIVIA_MAX_TOPICS] = {0};
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && _scr.vote[i] >= 0 && _scr.vote[i] < _scr.packCount) votes[_scr.vote[i]]++;
+            for(int i = 0; i < _scr.packCount; i++) {
+                if(i) s += ",";
+                s += "{\"name\":\"" + ha_json_escape(_scr.packs[i].name.c_str()) + "\",\"votes\":" + votes[i] + "}";
+            }
+            s += "],\"myvote\":" + String((int)_scr.vote[pid]);
+            s += "}";
+            return s;
+        }
         if(pt.phase == 1)
             return String("{\"t\":\"scramble\",\"phase\":\"countdown\",\"sec\":") +
                    partyCountdownSec(pt) + "}";
