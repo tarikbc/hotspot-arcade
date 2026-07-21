@@ -138,3 +138,39 @@ jobs:
             echo "::error::The ESP sources changed but flipper/hotspot-arcade/assets/firmware/ wasn't rebuilt (recorded $recorded, current $current). Run tools/build-fap.sh and commit the refreshed images."
             exit 1
           fi
+
+  simulator:
+    # Compile-only guard for the local simulator (sim/), which builds the REAL game
+    # engine to WebAssembly. sim/engine/Arduino.h implements exactly the Arduino
+    # surface ha_games.h uses TODAY; the first time the firmware gains a String
+    # method or an ESP-IDF call, the simulator stops building. Without this job that
+    # failure is silent until someone next tries to run it, possibly months later.
+    # Compiling is the guard — the headless tests deliberately aren't run here.
+    name: Simulator engine compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 'latest' rather than a pin on purpose: the question this job answers is
+      # "does the engine still build with a current toolchain", and the emcc flags
+      # used (MODULARIZE / EXPORT_ES6 / EXPORTED_FUNCTIONS) have been stable for
+      # years. If a future emscripten release breaks the build, that is a real
+      # finding, not noise to be pinned away.
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the WASM engine
+        run: sim/engine/build.sh
+
+      - name: Confirm the build produced a loadable module
+        # A zero-byte or missing artifact would otherwise pass as "compiled".
+        run: |
+          for f in sim/web/engine.js sim/web/engine.wasm; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f missing or empty after sim/engine/build.sh"
+              exit 1
+            fi
+          done
+          ls -l sim/web/engine.js sim/web/engine.wasm
