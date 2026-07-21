@@ -407,10 +407,18 @@ var proto = location.protocol === "https:" ? "wss:" : "ws:";
 var host = location.host || "192.168.4.1";
 return proto + "//" + host + "/ws";
 }
+function harnessSocket() {
+var q = new URLSearchParams(location.search);
+if (!q.has("harness")) return null;
+if (window.parent === window || !window.parent.HA_HARNESS) return null;
+return window.parent.HA_HARNESS.connect(q.get("harness"));
+}
 function connect() {
-var ws;
+var ws = harnessSocket();
+if (!ws) {
 try { ws = new WebSocket(wsUrl()); }
 catch (e) { scheduleReconnect(); return; }
+}
 A.ws = ws;
 ws.onopen = function () {
 A.retry = 0;

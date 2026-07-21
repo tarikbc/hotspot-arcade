@@ -245,10 +245,24 @@ function wsUrl() {
   return proto + "//" + host + "/ws";
 }
 
+/* The local simulator (sim/) runs the real ESP engine in WASM inside the parent
+   page, where there is no server to open a socket against. With "?harness=<id>"
+   the client asks the parent for a duck-typed socket instead. The client pulls
+   rather than the parent pushing, so this can't depend on script ordering.
+   Dead code in production: no query param and no parent harness, no change. */
+function harnessSocket() {
+  var q = new URLSearchParams(location.search);
+  if (!q.has("harness")) return null;
+  if (window.parent === window || !window.parent.HA_HARNESS) return null;
+  return window.parent.HA_HARNESS.connect(q.get("harness"));
+}
+
 function connect() {
-  var ws;
-  try { ws = new WebSocket(wsUrl()); }
-  catch (e) { scheduleReconnect(); return; }
+  var ws = harnessSocket();
+  if (!ws) {
+    try { ws = new WebSocket(wsUrl()); }
+    catch (e) { scheduleReconnect(); return; }
+  }
   A.ws = ws;
 
   ws.onopen = function () {
