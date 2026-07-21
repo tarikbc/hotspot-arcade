@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41 // 'A'
 #define HA_FW_MAGIC_2 0x52 // 'R'
 #define HA_FW_MAGIC_3 0x43 // 'C'  ("HARC" = Hotspot ARCade)
-#define HA_FW_VERSION 8 // v8: reactions scoped to your match/lobby group; pong contact plane fixed
+#define HA_FW_VERSION 9 // v9: generic content packs; the Flipper no longer parses game content
 
 // Flipper -> ESP
 enum {
@@ -32,9 +32,9 @@ enum {
     HA_MSG_ROUND_END = 0x19,
     HA_MSG_CONFIG = 0x1A,
     HA_MSG_RESET_SCORES = 0x1B,
-    HA_MSG_TRIVIA_CLEAR = 0x1C, // drop stored topics (start of pack streaming)
-    HA_MSG_TRIVIA_TOPIC = 0x1D, // payload = topic name; creates a topic
-    HA_MSG_TRIVIA_Q = 0x1E, // payload = JSON {q,o[4],c}; appends to the last topic
+    HA_MSG_CONTENT_CLEAR = 0x1C, // drop all packs, for every game
+    HA_MSG_CONTENT_PACK = 0x1D, // payload = game byte + pack name; begins a pack
+    HA_MSG_CONTENT_ITEM = 0x1E, // payload = JSON object of the file's own keys
 };
 
 // ESP -> Flipper
