@@ -260,7 +260,13 @@ function send(obj) {
 
 /* Header status dot: "" connected (orange), "warn" reconnecting, "bad" down. */
 function setDot(cls) { $("dot").className = "dot" + (cls ? " " + cls : ""); }
-function setNick() { $("hdr-nick").textContent = A.nick || ""; }
+function setNick() {
+  var el = $("hdr-nick");
+  if (!el) return;
+  // Show avatar + name, and only reveal (and enable tapping) once the player has one.
+  el.textContent = A.nick ? (A.avatar + " " + A.nick) : "";
+  el.classList.toggle("hide", !A.nick);
+}
 
 /* WebSocket URL derives from the host so a local mock server also works.
    On the ESP this resolves to ws://192.168.4.1/ws. */
@@ -489,24 +495,54 @@ function randomNick() {
   var w = NICK_WORDS[Math.floor(Math.random() * NICK_WORDS.length)];
   return w + (10 + Math.floor(Math.random() * 90));
 }
-function buildAvatarPicker() {
-  var wrap = $("avatars");
+/* Render the emoji grid into `wrap`, highlighting `current` and calling onPick(em)
+   on each tap. Shared by the landing picker and the header identity editor. */
+function renderAvatarPicker(wrap, current, onPick) {
   if (!wrap) return;
   wrap.innerHTML = "";
   AVATARS.forEach(function (em) {
     var b = document.createElement("button");
     b.type = "button";
-    b.className = "av-pick" + (em === A.avatar ? " on" : "");
+    b.className = "av-pick" + (em === current ? " on" : "");
     b.textContent = em;
     b.addEventListener("click", function () {
-      A.avatar = em;
       A.sfx("tick"); A.vibe(10);
       Array.prototype.forEach.call(wrap.children, function (c) {
         c.classList.toggle("on", c.textContent === em);
       });
+      onPick(em);
     });
     wrap.appendChild(b);
   });
+}
+// Landing picker: commits straight to A.avatar as before.
+function buildAvatarPicker() {
+  renderAvatarPicker($("avatars"), A.avatar, function (em) { A.avatar = em; });
+}
+
+/* Header identity editor. Tap the header name to change nickname/avatar mid-game;
+   Save re-sends `hello` (the ESP updates the player in place) and persists locally.
+   Edits are held in temporaries so Cancel changes nothing. */
+var editAvatar = "";
+function openIdEdit() {
+  if (!A.joined) return;
+  editAvatar = A.avatar;
+  $("id-nick").value = A.nick || "";
+  renderAvatarPicker($("id-avatars"), A.avatar, function (em) { editAvatar = em; });
+  show("id-edit");
+  $("id-nick").focus();
+}
+function closeIdEdit() { hide("id-edit"); }
+function saveIdEdit() {
+  var n = $("id-nick").value.trim().slice(0, 12).toUpperCase();
+  if (!n) { $("id-nick").focus(); return; }   // keep the old name rather than blanking it
+  A.nick = n;
+  A.avatar = editAvatar || A.avatar;
+  setNick();
+  A.sfx("start"); A.vibe(20);
+  try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
+  send({ t: "hello", nick: n, avatar: A.avatar });
+  closeIdEdit();
 }
 
 // ---- emoji reactions (float up, in any screen) --------------------------
@@ -568,6 +604,13 @@ function initApp() {
   setDot("warn");       // not connected yet
   buildAvatarPicker();
   buildReactBar();
+
+  // Header identity: tap your name to change nickname/avatar mid-game.
+  $("hdr-nick").addEventListener("click", openIdEdit);
+  $("id-save").addEventListener("click", saveIdEdit);
+  $("id-cancel").addEventListener("click", closeIdEdit);
+  // Tap the dimmed backdrop (outside the card) to dismiss.
+  $("id-edit").addEventListener("click", function (e) { if (e.target === $("id-edit")) closeIdEdit(); });
 
   // Reactions FAB: tap to reveal the emoji row; the bar is hidden on landing.
   $("react-fab").addEventListener("click", function () {

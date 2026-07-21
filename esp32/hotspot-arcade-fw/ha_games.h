@@ -276,9 +276,13 @@ public:
             strlcpy(_p[pid].avatar, (avatar && avatar[0]) ? avatar : "\xF0\x9F\x99\x82", sizeof(_p[pid].avatar));
             haUartJoin(pid, _p[pid].nick);
         } else {
+            // Re-hello from a known socket = the player changed their name/avatar in
+            // the header editor. Re-announce over UART so the Flipper's leaderboard
+            // updates (player_join there updates an existing pid's nick in place).
             if(nick && nick[0]) {
                 strlcpy(_p[pid].nick, nick, HA_NICK_LEN);
                 ha_upper(_p[pid].nick);
+                haUartJoin(pid, _p[pid].nick);
             }
             if(avatar && avatar[0]) strlcpy(_p[pid].avatar, avatar, sizeof(_p[pid].avatar));
         }

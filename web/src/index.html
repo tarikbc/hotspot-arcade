@@ -15,9 +15,24 @@
   <span class="hdr-right">
     <button id="mute" class="mute" type="button" aria-label="Mute" aria-pressed="false">&#9834;</button>
     <span id="dot" class="dot warn" title="connection"></span>
-    <span id="hdr-nick"></span>
+    <button id="hdr-nick" class="hdr-id hide" type="button" aria-label="Change name and avatar"></button>
   </span>
 </header>
+
+<!-- Identity editor: tap the header name to change your nickname / avatar mid-game. -->
+<div id="id-edit" class="sheet hide">
+  <div class="sheet-card">
+    <p class="sub">Your nickname</p>
+    <input id="id-nick" maxlength="12" autocomplete="off" autocapitalize="characters"
+           spellcheck="false" placeholder="e.g. NOVA" style="text-transform:uppercase">
+    <p class="sub">Your avatar</p>
+    <div id="id-avatars" class="avatars"></div>
+    <div class="sheet-actions">
+      <button id="id-save" class="btn big">Save</button>
+      <button id="id-cancel" class="btn ghost big">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- Reconnect banner -->
 <div id="netbar" class="netbar hide">Reconnecting...</div>

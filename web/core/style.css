@@ -48,8 +48,28 @@ body{
 .dot{width:10px; height:10px; border-radius:50%; background:var(--orange); flex:none}
 .dot.warn{background:var(--text-mute)}
 .dot.bad{background:var(--bad)}
-#hdr-nick{max-width:34vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  text-transform:uppercase; letter-spacing:.06em}
+/* Header identity: a tappable chip showing avatar + name; opens the editor. */
+#hdr-nick{max-width:38vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  text-transform:uppercase; letter-spacing:.06em;
+  appearance:none; font-family:var(--font); font-size:12px; color:var(--text-dim);
+  background:var(--surface-2); border:2px solid var(--line); border-radius:var(--radius);
+  padding:4px 8px; cursor:pointer}
+#hdr-nick:active{border-color:var(--orange); transform:translateY(1px)}
+
+/* Modal sheet (identity editor): a dimmed backdrop with a centred card. */
+.sheet{position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.66);
+  display:flex; align-items:center; justify-content:center; padding:20px}
+.sheet-card{width:100%; max-width:360px; background:var(--surface); border:2px solid var(--line);
+  border-radius:var(--radius); padding:16px; display:flex; flex-direction:column; gap:10px}
+.sheet-card input{background:var(--surface-2); color:var(--text); font-family:var(--font);
+  font-size:16px; padding:12px; border:2px solid var(--line); border-radius:var(--radius)}
+.sheet-card input:focus{outline:none; border-color:var(--orange)}
+.sheet-actions{display:flex; flex-direction:column; gap:8px; margin-top:6px}
+/* In the narrower editor card the landing's square cells (aspect-ratio + min-height
+   give each an effective 38px min-width) overflow 8-across. Use a fixed height so the
+   eight 1fr columns just distribute to whatever width is available — no overflow. */
+#id-avatars{gap:5px}
+#id-avatars .av-pick{aspect-ratio:auto; height:42px; min-height:0; font-size:20px}
 
 /* Mute toggle (header). Orange note when on; struck-through + dim when muted. */
 .mute{
