@@ -107,10 +107,16 @@
     for (var i = 0; i < n; i++) {
       var cell = rebuild ? document.createElement("div") : board.children[i];
       var v = b[i] || 0;
-      var isNew = pb && pb[i] === "0" && v !== 0;
+      var was = pb ? pb[i] : undefined;
+      // Placed: an empty square gained a disc. Flipped: a disc changed owner (the
+      // capture that makes Othello Othello, which the old drop-from-top ignored).
+      var isNew = pb && (was === "0" || was === 0) && v !== 0;
+      var isFlip = pb && was !== undefined && was !== "0" && was !== 0 &&
+        v !== 0 && String(was) !== String(v);
       var own = v === 0 ? "" : (v === m.me ? " you" : " opp");
       var canPlay = myTurn && vset[i];
-      cell.className = "cell" + own + (isNew ? " drop" : "") + (canPlay ? " playable" : "");
+      cell.className = "cell" + own + (isNew ? " place" : "") + (isFlip ? " flip" : "") +
+        (canPlay ? " playable" : "");
       if (rebuild) board.appendChild(cell);
     }
 

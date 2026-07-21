@@ -248,6 +248,13 @@ h3{margin:0; font-weight:600}
 
 /* Connect Four */
 .challenges{display:flex; flex-direction:column; gap:8px}
+/* Space the challenge card(s) off the "Challenge a player" list below, but only
+   when there actually are challenges (an empty box adds no stray gap). */
+.challenges:not(:empty){margin-bottom:16px}
+
+/* The party-game "I'm ready" button sits between the player list and the pack-vote
+   strip; give it breathing room on both sides so it doesn't crowd either. */
+#tv-ready, #wyr-ready, #scr-ready, #rc-ready{margin:14px 0}
 .challenge{
   display:flex; align-items:center; gap:10px; background:var(--surface-2);
   border:2px solid var(--orange); border-radius:var(--radius); padding:10px 12px;
@@ -268,6 +275,13 @@ h3{margin:0; font-weight:600}
 .cell.opp::after{background:var(--disc-opp)}
 .cell.drop::after{animation:drop .16s ease-out}
 @keyframes drop{from{transform:translateY(-160%)}to{transform:none}}
+/* Reversi discs are placed and flipped, not dropped from above. A newly placed
+   disc pops in; a captured disc flips over (squish edge-on and back — the color is
+   already the new one, so it reads as turning over). */
+.cell.place::after{animation:place .18s ease-out}
+@keyframes place{from{transform:scale(.2); opacity:.2}to{transform:none; opacity:1}}
+.cell.flip::after{animation:flip .3s ease-in-out}
+@keyframes flip{0%{transform:scaleX(1)}50%{transform:scaleX(.12)}100%{transform:scaleX(1)}}
 .board.mine .cell{cursor:pointer}
 .over{text-align:center; display:flex; flex-direction:column; gap:20px; margin-top:8vh}
 .result{font-size:40px; font-weight:700; text-transform:uppercase; letter-spacing:.1em}
