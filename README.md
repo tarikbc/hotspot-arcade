@@ -147,7 +147,8 @@ The bundled web bundle and trivia packs live in `/ext/apps_assets/hotspot_arcade
 the loader rewrites from the .fap on every launch. To add your own, use
 `/ext/apps_data/hotspot_arcade/` instead, which is never touched:
 
-- `trivia/*.txt` — your packs are offered alongside the bundled ones (yours win a name clash).
+- `packs/<game>/*.txt` — your packs are offered alongside the bundled ones (yours win a
+  name clash). One directory per game, e.g. `packs/trivia/`.
 - `web/` — a `manifest.json` here replaces the bundled game client entirely.
 
 ## Build from source
@@ -190,10 +191,11 @@ On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
 
 ## Trivia packs
 
-Simple text files under `trivia-packs/` (`Pack:` / `Q:` / `A:`-`D:` / `Answer:`, blocks
-split by `---`). Three ship inside the .fap; drop your own into
-`/ext/apps_data/hotspot_arcade/trivia/` to add to them. See
-[trivia-packs/README.md](trivia-packs/README.md).
+Plain-text files, one directory per game under `packs/` (`Key: value` lines, blocks split
+by `---` or a blank line, `Pack:` names the pack). Trivia's keys are `Q:`, `A:`-`D:` and
+`Answer:`. Three packs ship inside the .fap; drop your own into
+`/ext/apps_data/hotspot_arcade/packs/trivia/` to add to them. See
+[packs/README.md](packs/README.md).
 
 ## Responsible use
 
@@ -210,7 +212,7 @@ flipper/hotspot-arcade/   Flipper app (C, ufbt/Momentum) — host + scoreboard
 esp32/hotspot-arcade-fw/  ESP32-S2 firmware (Arduino) — AP + web + WebSocket referee
 esp32/libs/               vendored AsyncTCP + ESPAsyncWebServer
 web/                      phone game client (vanilla JS, gzipped bundle)
-trivia-packs/             sample trivia content
+packs/                    content packs, one dir per game (trivia today)
 tools/deploy-to-flipper.py
 docs/                     ARCHITECTURE.md, PROTOCOL.md
 ```

@@ -10,6 +10,22 @@ for the keys lives in the ESP firmware.
 
 ## Format
 
+The block grammar is generic — the same for every game:
+
+- The first non-empty line of a block **may** be `Pack: <name>` to name the pack.
+  If absent, the file name is used.
+- Every other line is `Key: value`. Which keys matter, and what they mean, is up to
+  the game — the Flipper ships them verbatim without parsing them.
+- Blocks are separated by a line containing only `---` (three hyphens) and/or one
+  or more blank lines.
+- Every line is trimmed of surrounding whitespace before parsing.
+
+### Trivia's keys
+
+Trivia is the one game that uses packs today. Its block is one `Q:` line, exactly
+four option lines `A:` / `B:` / `C:` / `D:`, and one `Answer:` line whose value is a
+single letter `A`-`D` matching a real option:
+
 ```
 Pack: General Knowledge
 Q: What is the capital of France?
@@ -28,32 +44,17 @@ Answer: C
 ---
 ```
 
-Rules:
-
-- The first non-empty line **may** be `Pack: <name>` to name the pack. If absent,
-  the file name is used.
-- Each question block is:
-  - one `Q:` line (the question),
-  - exactly four option lines `A:` / `B:` / `C:` / `D:`,
-  - one `Answer:` line whose value is a single letter `A`, `B`, `C`, or `D`.
-- Blocks are separated by a line containing only `---` (three hyphens) and/or one
-  or more blank lines.
-- Every line is trimmed of surrounding whitespace before parsing.
-- Keep it short so it renders on phones and fits the UART payload budget:
-  question <= ~110 characters, each option <= ~38 characters.
-- No em-dashes in the content. Use commas or periods. The `---` block separator is
-  three plain hyphens on their own line and is fine.
-
-The `Answer:` letter must map to a real option, and each block must have exactly
-four options.
+Keep it short so it renders on phones and fits the UART payload budget: question
+<= ~110 characters, each option <= ~38 characters. No em-dashes in the content —
+use commas or periods (the `---` separator is plain hyphens and is fine).
 
 ## How packs get onto the SD card
 
-Packs live here in `trivia-packs/` and are pushed to the Flipper by the deploy
-script, which copies every `*.txt` file to:
+Packs live here and are pushed to the Flipper by the deploy script, which copies
+every `packs/<game>/*.txt` file to:
 
 ```
-/ext/apps_data/hotspot_arcade/trivia/<name>.txt
+/ext/apps_data/hotspot_arcade/packs/<game>/<name>.txt
 ```
 
 Run it with the Flipper connected over USB:
@@ -62,6 +63,6 @@ Run it with the Flipper connected over USB:
 python3 tools/deploy-to-flipper.py --port /dev/cu.usbmodemflip_XXXX
 ```
 
-The Flipper reads the packs from that directory at runtime. The deploy script only
+The Flipper reads packs from that directory tree at runtime. The deploy script only
 adds files; packs removed from this folder are not deleted from the SD card
 automatically.

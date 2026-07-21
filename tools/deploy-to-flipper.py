@@ -5,7 +5,8 @@ Uploads three things to the SD card, each verified by on-device md5:
   - the built fap             -> /ext/apps/GPIO/hotspot_arcade.fap
   - web bundle (web/dist/*)   -> /ext/apps_data/hotspot_arcade/web/<name>
       (the *.gz files AND manifest.json; the uncompressed index.html is skipped)
-  - trivia packs (*.txt)      -> /ext/apps_data/hotspot_arcade/trivia/<name>
+  - content packs (*.txt)     -> /ext/apps_data/hotspot_arcade/packs/<game>/<name>
+      (one subdirectory per game under packs/, e.g. packs/trivia/*.txt)
 
 The ESP firmware bundle is NOT deployed here: it ships inside the .fap
 (fap_file_assets) and the loader extracts it to
@@ -32,7 +33,7 @@ BLOCK = 4096  # small blocks keep the Flipper's per-write_chunk malloc tiny
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAP = os.path.join(REPO, "flipper", "hotspot-arcade", "dist", "hotspot_arcade.fap")
 WEB_DIST = os.path.join(REPO, "web", "dist")
-TRIVIA = os.path.join(REPO, "trivia-packs")
+PACKS = os.path.join(REPO, "packs")
 
 APP_DIR = "/ext/apps_data/hotspot_arcade"
 
@@ -96,6 +97,25 @@ def web_files():
     return files
 
 
+def pack_files():
+    """{game: [packs/<game>/*.txt, ...]} for every game directory under packs/.
+
+    Missing packs/, an empty game directory, or a game directory with no *.txt
+    files are all fine here — they just contribute nothing to the result.
+    """
+    games = {}
+    if not os.path.isdir(PACKS):
+        return games
+    for game in sorted(os.listdir(PACKS)):
+        game_dir = os.path.join(PACKS, game)
+        if not os.path.isdir(game_dir):
+            continue  # e.g. packs/README.md
+        files = sorted(glob.glob(os.path.join(game_dir, "*.txt")))
+        if files:
+            games[game] = files
+    return games
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True, help="Flipper serial port")
@@ -113,6 +133,8 @@ def main():
             "build it first: cd web && node build.mjs"
         )
 
+    packs = pack_files()
+
     s = serial.Serial(args.port, timeout=3)
     time.sleep(0.2)
     fails = []
@@ -124,16 +146,19 @@ def main():
             "/ext/apps_data",
             APP_DIR,
             f"{APP_DIR}/web",
-            f"{APP_DIR}/trivia",
+            f"{APP_DIR}/packs",
             f"{APP_DIR}/logs",
         ]:
             cmd(s, f"storage mkdir {d}")
+        for game in packs:
+            cmd(s, f"storage mkdir {APP_DIR}/packs/{game}")
 
         jobs.append((FAP, "/ext/apps/GPIO/hotspot_arcade.fap"))
         for p in web:
             jobs.append((p, f"{APP_DIR}/web/{os.path.basename(p)}"))
-        for p in sorted(glob.glob(os.path.join(TRIVIA, "*.txt"))):
-            jobs.append((p, f"{APP_DIR}/trivia/{os.path.basename(p)}"))
+        for game, files in packs.items():
+            for p in files:
+                jobs.append((p, f"{APP_DIR}/packs/{game}/{os.path.basename(p)}"))
 
         for local, remote in jobs:
             ok = upload(s, local, remote)

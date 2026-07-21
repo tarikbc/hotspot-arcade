@@ -44,7 +44,7 @@ No WiFi, no ESP heap accounting, no UART timing — the 8-phone scale test still
 hardware. The Flipper panel shows UART traffic, not the real 1-bit screens.
 
 `loadSamplePacks()` (`flipper.js`) has a hardcoded pack list (`general`, `movies`,
-`science`). A new file dropped into `trivia-packs/` will not show up in the "Load
+`science`). A new file dropped into `packs/trivia/` will not show up in the "Load
 trivia packs" button until that list is updated by hand.
 
 ## Fidelity
@@ -52,9 +52,9 @@ trivia packs" button until that list is updated by hand.
 Game rules come from the real engine, so they cannot drift. Several smaller things
 are still hand-copied from the firmware and can drift if only one side is updated:
 
-- The trivia pack text parser (`trivia-packs.js`), which mirrors `trivia_stream_pack`
-  in `ha_session.c` line for line; see
-  `docs/superpowers/specs/2026-07-21-sim-harness-design.md`.
+- The pack block parser (`trivia-packs.js`), which mirrors the generic `Key: value`
+  block streamer in `ha_session.c`. Since the Flipper no longer interprets game content,
+  this is now a copy of a much smaller grammar than before.
 - The `HA_GAME_*` id table (`flipper.js`'s `GAMES` array), copied from
   `flipper/hotspot-arcade/ha_proto.h`. Adding a game to the firmware means adding it
   to `GAMES` too, or the Flipper panel's game picker won't offer it.
