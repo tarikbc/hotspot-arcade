@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41
 #define HA_FW_MAGIC_2 0x52
 #define HA_FW_MAGIC_3 0x43
-#define HA_FW_VERSION 10 // v10: wyr/scramble/draw play from content packs
+#define HA_FW_VERSION 11 // v11: 3s countdowns; WYR vote/reveal countdown bar
 
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES   0x10

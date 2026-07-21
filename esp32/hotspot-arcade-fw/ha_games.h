@@ -37,7 +37,7 @@ static inline void ha_upper(char* s) {
 #define TRIVIA_MAX_QS 20
 #define PACK_MAX_ITEMS 32 // items in a word/prompt pack (wyr/scramble/draw)
 #define TRIVIA_QDUR 20 // seconds per question (safety timer)
-#define TRIVIA_COUNTDOWN 5 // seconds after all-ready before the first question
+#define TRIVIA_COUNTDOWN 3 // seconds after all-ready before the first question
 #define TRIVIA_REVEAL_MS 4000 // pause on the reveal before the next question
 
 #define DRAW_SECS 70 // per drawing round
@@ -57,7 +57,7 @@ static inline void ha_upper(char* s) {
 
 // Whole-group "party" games (would-you-rather / scramble / reaction) share a
 // lobby -> countdown -> round -> reveal -> ... -> final skeleton (see Party).
-#define PARTY_COUNTDOWN 5 // seconds after all-ready before round 1
+#define PARTY_COUNTDOWN 3 // seconds after all-ready before round 1
 #define WYR_ROUNDS 6
 #define WYR_VOTE_SECS 20 // safety timer per prompt
 #define WYR_REVEAL_MS 5000
@@ -2110,11 +2110,16 @@ private:
                    "\",\"round\":" + pt.round + ",\"rounds\":" + WYR_ROUNDS + ",\"a\":\"" +
                    ha_json_escape(a) + "\",\"b\":\"" + ha_json_escape(b) + "\",\"myvote\":" +
                    _wyr.choice[pid] + ",\"counts\":[" + cA + "," + cB + "]";
-        if(pt.phase == 2) {
+        if(pt.phase == 2) { // asking: count down the vote window
             s += ",\"deadline\":";
             s += pt.deadline;
             s += ",\"dur\":";
             s += WYR_VOTE_SECS;
+        } else if(pt.phase == 3) { // results: count down to the next prompt
+            s += ",\"deadline\":";
+            s += pt.revealUntil;
+            s += ",\"dur\":";
+            s += (WYR_REVEAL_MS / 1000);
         }
         s += "}";
         return s;
