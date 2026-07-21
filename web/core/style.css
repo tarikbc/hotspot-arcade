@@ -289,10 +289,24 @@ h3{margin:0; font-weight:600}
 .over-actions{display:flex; flex-direction:column; gap:10px}
 .btn.big+.btn.big,.over-actions .btn{width:100%}
 
-/* Tic-Tac-Toe: square marks instead of discs. Bigger cells, chunky grid. */
-.board.ttt{gap:6px}
-.board.ttt .cell::after{border-radius:0; inset:22%}
-.board.ttt .cell.opp::after{background:transparent; box-shadow:inset 0 0 0 5px var(--disc-opp)}
+/* Tic-Tac-Toe: crosses and circles on a proper square 3x3 grid.
+   Constrain the board to a centred square with three equal rows — without explicit
+   rows the grid's default stretch collapses the (empty) cell heights while columns
+   stay full-width, giving the squashed, cut-off board this replaces. */
+.board.ttt{
+  aspect-ratio:1; width:100%; max-width:min(66vh,100%); margin:0 auto;
+  grid-template-rows:repeat(3,1fr); gap:6px;
+}
+.board.ttt .cell{
+  aspect-ratio:auto;  /* rows are equal fractions; don't fight them with the cell ratio */
+  display:flex; align-items:center; justify-content:center;
+  font-size:min(24vw,92px); font-weight:700; line-height:1;
+}
+.board.ttt .cell::after{display:none}          /* no disc; the mark is a glyph */
+.board.ttt .cell.you{color:var(--disc-you)}    /* your marks tint orange... */
+.board.ttt .cell.opp{color:var(--disc-opp)}    /* ...the opponent's, grey */
+.board.ttt .cell.drop{animation:markpop .18s ease-out}
+@keyframes markpop{from{transform:scale(.3); opacity:.3}to{transform:none; opacity:1}}
 
 /* Dots & Boxes: a big square board that fills the width. Each edge cell is a full
    tap target; the visible line is a thin centered band (classic dots look). */

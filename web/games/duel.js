@@ -27,6 +27,9 @@
       var isNew = pb && pb[i] === "0" && v !== 0;
       var own = v === 0 ? "" : (v === m.me ? " you" : " opp");
       cell.className = "cell" + own + (isNew ? " drop" : "");
+      // Tic-Tac-Toe uses a cross for the first mark and a circle for the second, the
+      // same on both phones (by mark, not by who's looking). Connect Four keeps discs.
+      if (m.kind === "ttt") cell.textContent = v === 1 ? "✕" : (v === 2 ? "◯" : "");
       if (rebuild) board.appendChild(cell);
     }
 
