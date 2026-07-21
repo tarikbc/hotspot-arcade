@@ -257,6 +257,16 @@ function harnessSocket() {
   return window.parent.HA_HARNESS.connect(q.get("harness"));
 }
 
+/* Saved-identity key. Real phones are separate devices with separate storage, but
+   the simulator's panels are iframes on one origin sharing one localStorage, so
+   without this every panel would rejoin as whoever saved last. Namespacing by the
+   harness id also makes "returning player auto-rejoins" testable per panel, which
+   it otherwise isn't. Unchanged in production: no "?harness=", no suffix. */
+function storeKey(name) {
+  var h = new URLSearchParams(location.search).get("harness");
+  return h ? name + "_" + h : name;
+}
+
 function connect() {
   var ws = harnessSocket();
   if (!ws) {
@@ -421,7 +431,7 @@ function startPlay() {
   setNick();
   A.initAudio();          // first gesture: unlock audio for the session
   A.sfx("start"); A.vibe(30);
-  try { localStorage.setItem("ha_nick", n); localStorage.setItem("ha_avatar", A.avatar); } catch (e) {}
+  try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
   send({ t: "hello", nick: n, avatar: A.avatar });
   screen("lobby");
 }
@@ -495,8 +505,8 @@ A.handlers.emoji = function (m) {
 function initApp() {
   var saved = "";
   try {
-    saved = (localStorage.getItem("ha_nick") || "").toUpperCase();
-    A.avatar = localStorage.getItem("ha_avatar") || A.avatar;
+    saved = (localStorage.getItem(storeKey("ha_nick")) || "").toUpperCase();
+    A.avatar = localStorage.getItem(storeKey("ha_avatar")) || A.avatar;
   } catch (e) {}
   A.nick = saved;
   A.joined = !!saved;   // returning player: rejoin automatically on connect

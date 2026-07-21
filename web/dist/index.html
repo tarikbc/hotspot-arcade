@@ -413,6 +413,10 @@ if (!q.has("harness")) return null;
 if (window.parent === window || !window.parent.HA_HARNESS) return null;
 return window.parent.HA_HARNESS.connect(q.get("harness"));
 }
+function storeKey(name) {
+var h = new URLSearchParams(location.search).get("harness");
+return h ? name + "_" + h : name;
+}
 function connect() {
 var ws = harnessSocket();
 if (!ws) {
@@ -545,7 +549,7 @@ A.joined = true;
 setNick();
 A.initAudio();          // first gesture: unlock audio for the session
 A.sfx("start"); A.vibe(30);
-try { localStorage.setItem("ha_nick", n); localStorage.setItem("ha_avatar", A.avatar); } catch (e) {}
+try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
 send({ t: "hello", nick: n, avatar: A.avatar });
 screen("lobby");
 }
@@ -610,8 +614,8 @@ if (m.pid !== A.pid) A.vibe(8);
 function initApp() {
 var saved = "";
 try {
-saved = (localStorage.getItem("ha_nick") || "").toUpperCase();
-A.avatar = localStorage.getItem("ha_avatar") || A.avatar;
+saved = (localStorage.getItem(storeKey("ha_nick")) || "").toUpperCase();
+A.avatar = localStorage.getItem(storeKey("ha_avatar")) || A.avatar;
 } catch (e) {}
 A.nick = saved;
 A.joined = !!saved;   // returning player: rejoin automatically on connect

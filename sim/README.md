@@ -13,6 +13,13 @@ cd .. && sim/engine/build.sh # build the engine
 sim/serve.sh                 # -> http://localhost:8123/sim/web/
 ```
 
+Each panel keeps its own saved identity. All panels are iframes on one origin and so
+share one `localStorage`, which real phones don't — so with `?harness=<id>` the client
+suffixes its saved-nickname key with that id (`storeKey()` in `web/core/app.js`).
+Without it every panel would rejoin as whoever saved last. A side benefit: reloading
+the page auto-rejoins each panel as itself, so the returning-player path is testable
+here at all.
+
 ## Headless tests
 
 ```sh
@@ -35,11 +42,6 @@ silently corrupts a neighbour; under ASan it aborts at the line.
 
 No WiFi, no ESP heap accounting, no UART timing — the 8-phone scale test still needs
 hardware. The Flipper panel shows UART traffic, not the real 1-bit screens.
-
-All phone panels share one browser origin (and so one `localStorage`): a returning
-"player" auto-rejoins under whatever nickname was last saved to that shared storage.
-That's a simulator artifact of running every panel in one page, not an engine
-behaviour — the real phones each have their own storage.
 
 `loadSamplePacks()` (`flipper.js`) has a hardcoded pack list (`general`, `movies`,
 `science`). A new file dropped into `trivia-packs/` will not show up in the "Load
