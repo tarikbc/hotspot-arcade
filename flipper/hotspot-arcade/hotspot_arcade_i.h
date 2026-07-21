@@ -158,6 +158,10 @@ typedef struct HotspotArcadeApp {
     char flash_msg[80];
     bool flash_ok;
     uint8_t flash_phase; // 0=waiting for download mode, 1=flashing, 2=done
+    // Set on the done screen after a successful flash: the tick poll watches for the
+    // freshly-reset board's PING beacon and continues on its own, so the user doesn't
+    // have to tap RESET and then also confirm. Continue stays as the manual fallback.
+    volatile bool flash_await_boot;
     // --- end ESP flasher ---
 
     volatile bool closing;
