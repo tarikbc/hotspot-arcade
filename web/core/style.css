@@ -100,15 +100,15 @@ h3{margin:0; font-weight:600}
 .btn.sm{min-height:40px; font-size:13px; padding:0 12px}
 
 /* Landing */
-.brand{text-align:center; margin-top:9vh; display:flex; flex-direction:column; align-items:center; gap:12px}
-.pixmark{
-  width:56px; height:56px; background:var(--bg); border:2px solid var(--orange);
-  display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:3px; padding:6px;
-}
-.pixmark i{background:var(--surface-2)}
-.pixmark i:nth-child(1),.pixmark i:nth-child(5),.pixmark i:nth-child(9),
-.pixmark i:nth-child(3),.pixmark i:nth-child(7){background:var(--orange)}
-.tag{color:var(--text-dim); margin:0; font-size:14px}
+.brand{text-align:center; margin-top:7vh; display:flex; flex-direction:column; align-items:center; gap:14px}
+/* Logo: the README banner recreated in the design system — pixel invader, a two-tone
+   wordmark, and the tagline. Crisp at any size, mono, and orange-accented. */
+.logo-invader{color:var(--orange); display:block}
+.wordmark-big{margin:0; display:flex; flex-direction:column; line-height:.92;
+  font-size:34px; font-weight:800; letter-spacing:.14em; text-transform:uppercase}
+.wordmark-big span{color:var(--text)}
+.wordmark-big .accent{color:var(--orange)}
+.tag{color:var(--text-mute); margin:0; font-size:12px; letter-spacing:.12em; text-transform:uppercase}
 .field{display:flex; flex-direction:column; gap:8px}
 .field input{
   min-height:var(--tap); border-radius:var(--radius); border:2px solid var(--line);
@@ -303,6 +303,7 @@ h3{margin:0; font-weight:600}
   font-size:min(24vw,92px); font-weight:700; line-height:1;
 }
 .board.ttt .cell::after{display:none}          /* no disc; the mark is a glyph */
+.board.ttt .cell .mk{display:block; transform:translateY(-0.06em)}  /* optical centre */
 .board.ttt .cell.you{color:var(--disc-you)}    /* your marks tint orange... */
 .board.ttt .cell.opp{color:var(--disc-opp)}    /* ...the opponent's, grey */
 .board.ttt .cell.drop{animation:markpop .18s ease-out}

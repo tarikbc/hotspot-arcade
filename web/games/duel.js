@@ -29,7 +29,17 @@
       cell.className = "cell" + own + (isNew ? " drop" : "");
       // Tic-Tac-Toe uses a cross for the first mark and a circle for the second, the
       // same on both phones (by mark, not by who's looking). Connect Four keeps discs.
-      if (m.kind === "ttt") cell.textContent = v === 1 ? "✕" : (v === 2 ? "◯" : "");
+      // The mark goes in a span so it can be optically nudged (the cross/circle glyphs
+      // sit slightly below the line-box centre); the cell itself carries the pop.
+      if (m.kind === "ttt") {
+        cell.textContent = "";
+        if (v) {
+          var mk = document.createElement("span");
+          mk.className = "mk";
+          mk.textContent = v === 1 ? "✕" : "◯";
+          cell.appendChild(mk);
+        }
+      }
       if (rebuild) board.appendChild(cell);
     }
 
