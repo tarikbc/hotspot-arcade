@@ -17,9 +17,11 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 # Hash every file that feeds the firmware build: the sketch plus the vendored libs.
-# The build/ dir is output, not input. -print0 + sort -z keeps this stable across
-# filesystems that hand back a different readdir order.
-{
-    find esp32/hotspot-arcade-fw -type f ! -path '*/build/*' -print0
-    find esp32/libs -type f -print0
-} | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1
+#
+# Deliberately `git ls-files` and not `find`: the stamp has to come out identical on a
+# dev machine and on a CI runner, and a working-tree walk doesn't. It would sweep up
+# untracked and ignored strays (a .DS_Store, the build/ output dir, a scratch file) that
+# exist in one place and not the other, so the stamp would mismatch for reasons that have
+# nothing to do with the firmware. Tracked files are the same set everywhere.
+git ls-files -z -- esp32/hotspot-arcade-fw esp32/libs |
+    LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1

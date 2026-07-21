@@ -99,15 +99,20 @@ jobs:
           node-version: "20"
 
       - name: Web bundle matches assets/web
-        # The web build is byte-reproducible, so compare the real thing.
+        # Compare the DECOMPRESSED bundle: zlib emits different bytes across platforms
+        # and versions for identical input, so the .gz files themselves don't match
+        # between a dev machine and this runner even when the content is the same.
         run: |
           cd web && node build.mjs && cd ..
-          for f in index.html.gz manifest.json; do
-            if ! cmp -s "web/dist/$f" "flipper/hotspot-arcade/assets/web/$f"; then
-              echo "::error::flipper/hotspot-arcade/assets/web/$f is stale. Run tools/build-fap.sh and commit the result."
-              exit 1
-            fi
-          done
+          if ! cmp -s <(gunzip -c web/dist/index.html.gz) \
+                      <(gunzip -c flipper/hotspot-arcade/assets/web/index.html.gz); then
+            echo "::error::flipper/hotspot-arcade/assets/web/index.html.gz is stale. Run tools/build-fap.sh and commit the result."
+            exit 1
+          fi
+          if ! cmp -s web/dist/manifest.json flipper/hotspot-arcade/assets/web/manifest.json; then
+            echo "::error::flipper/hotspot-arcade/assets/web/manifest.json is stale. Run tools/build-fap.sh and commit the result."
+            exit 1
+          fi
 
       - name: Trivia packs match assets/trivia
         run: |
