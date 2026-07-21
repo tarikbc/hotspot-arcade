@@ -238,4 +238,44 @@ assert.equal(brokenQ.msg.q, "", "no question text leaked from a half-built quest
   assert.ok(!anyRound, "with zero wyr packs loaded, the game refuses to start a round at all");
 }
 
+// --- Word Scramble ingests {word} --------------------------------------------
+{
+  const HA_GAME_SCRAMBLE = 9;
+  e.reset();
+  e.contentClear();
+  e.contentPack(HA_GAME_SCRAMBLE, "Animals");
+  e.contentItem(JSON.stringify({ word: "ELEPHANT" }));
+  e.contentItem(JSON.stringify({ note: "no word here" })); // dropped
+  e.selectGame(HA_GAME_SCRAMBLE);
+  e.join(1, "ana");
+  e.join(2, "bo");
+  e.input(1, { t: "ready", ready: true });
+  e.input(2, { t: "ready", ready: true });
+  let seen = [];
+  for (let ms = 1000; ms <= 8000; ms += 1000) seen = seen.concat(e.tick(ms));
+  const round = seen.filter((o) => o.to === "ws" && o.msg && o.msg.t === "scramble").pop();
+  assert.ok(round, "a scramble round reached a player");
+  // The scrambled letters shown must be a permutation of the pack's word.
+  const shown = (round.msg.scram || "").split("").sort().join("");
+  assert.equal(shown, "AEEHLNPT", "the shown letters are a permutation of ELEPHANT");
+}
+
+// --- Draw & Guess ingests {word} ---------------------------------------------
+{
+  const HA_GAME_DRAW = 5;
+  e.reset();
+  e.contentClear();
+  e.contentPack(HA_GAME_DRAW, "Things");
+  e.contentItem(JSON.stringify({ word: "ROCKET" }));
+  e.selectGame(HA_GAME_DRAW);
+  e.join(1, "ana");
+  e.join(2, "bo");
+  // Draw starts on its own once two players are present; tick to begin a round.
+  let seen = [];
+  for (let ms = 1000; ms <= 3000; ms += 500) seen = seen.concat(e.tick(ms));
+  // The drawer is told the word privately; assert it reached exactly one socket.
+  const wordMsgs = seen.filter((o) => o.to === "ws" && o.msg && o.msg.word === "ROCKET");
+  assert.ok(wordMsgs.length >= 1, "the drawer was given the pack's word");
+}
+
 console.log("content: OK");

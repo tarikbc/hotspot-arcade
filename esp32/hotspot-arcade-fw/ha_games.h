@@ -134,6 +134,14 @@ struct DuelChallenge {
     uint8_t from, to;
 };
 
+// Shared word pack for scramble/draw: a set of single-word items, voted on like
+// trivia topics / wyr packs. Mirrors WyrPack but with one word per item.
+struct WordPack {
+    String name;
+    String words[PACK_MAX_ITEMS];
+    uint8_t count;
+};
+
 struct DrawState {
     uint8_t phase; // 0 idle, 1 draw, 2 reveal, 3 final
     uint8_t drawer; // pid currently drawing
@@ -145,6 +153,10 @@ struct DrawState {
     uint32_t deadline; // millis (draw end)
     uint32_t revealUntil; // millis (reveal end)
     uint8_t winner; // pid who guessed it, or 0
+    WordPack packs[TRIVIA_MAX_TOPICS]; // pack cap mirrors trivia's topic cap
+    uint8_t packCount;
+    int8_t vote[HA_MAX_PLAYERS + 1]; // pack index, -1 = not voted (no vote strip yet; see Task 3)
+    uint8_t pack; // chosen pack index (pack 0 for now, no draw vote strip)
 };
 
 // Shared lobby/ready/countdown skeleton for the whole-group party games.
@@ -188,6 +200,10 @@ struct ScrambleState {
     char scram[24]; // shown (letters shuffled)
     bool solved[HA_MAX_PLAYERS + 1];
     uint8_t solvedCount;
+    WordPack packs[TRIVIA_MAX_TOPICS]; // pack cap mirrors trivia's topic cap
+    uint8_t packCount;
+    int8_t vote[HA_MAX_PLAYERS + 1]; // pack index, -1 = not voted
+    uint8_t pack; // chosen pack index (locked in when the round starts)
 };
 
 // Reaction duel (fastest finger): red -> (random delay) -> green; first tap wins.
@@ -328,6 +344,12 @@ public:
         triviaTopicsClear();
         for(int i = 0; i < TRIVIA_MAX_TOPICS; i++) _wyr.packs[i] = WyrPack{};
         _wyr.packCount = 0;
+        // Fully reset the pack arrays -- not just packCount -- or a stale item
+        // count survives a re-clear that doesn't load a replacement pack.
+        for(int i = 0; i < TRIVIA_MAX_TOPICS; i++) _scr.packs[i] = WordPack{};
+        _scr.packCount = 0;
+        for(int i = 0; i < TRIVIA_MAX_TOPICS; i++) _d.packs[i] = WordPack{};
+        _d.packCount = 0;
         _packGame = 0;
     }
 
@@ -341,6 +363,18 @@ public:
                 _wyr.packs[_wyr.packCount].name = name;
                 _wyr.packCount++;
             }
+        } else if(game == HA_GAME_SCRAMBLE) {
+            if(_scr.packCount < TRIVIA_MAX_TOPICS) {
+                _scr.packs[_scr.packCount] = WordPack{};
+                _scr.packs[_scr.packCount].name = name;
+                _scr.packCount++;
+            }
+        } else if(game == HA_GAME_DRAW) {
+            if(_d.packCount < TRIVIA_MAX_TOPICS) {
+                _d.packs[_d.packCount] = WordPack{};
+                _d.packs[_d.packCount].name = name;
+                _d.packCount++;
+            }
         }
     }
 
@@ -348,6 +382,8 @@ public:
         if(!_packGame) return; // no pack begun: nothing to attach to
         if(_packGame == HA_GAME_TRIVIA) triviaLoadItem(json);
         else if(_packGame == HA_GAME_WYR) wyrLoadItem(json);
+        else if(_packGame == HA_GAME_SCRAMBLE) scrambleLoadItem(json);
+        else if(_packGame == HA_GAME_DRAW) drawLoadItem(json);
         // Unknown game ids are dropped on purpose: a newer Flipper must not be able
         // to corrupt an older board's state.
     }
@@ -396,6 +432,28 @@ public:
         p.items[p.count].a = a;
         p.items[p.count].b = buf;
         p.count++;
+        return true;
+    }
+
+    // Map a scramble pack file's {word} key into the current pack.
+    bool scrambleLoadItem(const char* json) {
+        if(_scr.packCount == 0) return false;
+        WordPack& p = _scr.packs[_scr.packCount - 1];
+        if(p.count >= PACK_MAX_ITEMS) return false;
+        char buf[24];
+        if(!ha_json_str(json, "word", buf, sizeof(buf)) || !buf[0]) return false;
+        p.words[p.count++] = buf;
+        return true;
+    }
+
+    // Map a draw pack file's {word} key into the current pack.
+    bool drawLoadItem(const char* json) {
+        if(_d.packCount == 0) return false;
+        WordPack& p = _d.packs[_d.packCount - 1];
+        if(p.count >= PACK_MAX_ITEMS) return false;
+        char buf[24];
+        if(!ha_json_str(json, "word", buf, sizeof(buf)) || !buf[0]) return false;
+        p.words[p.count++] = buf;
         return true;
     }
 
@@ -1395,17 +1453,23 @@ private:
     }
 
     // ---------- drawing + guessing ----------
-    static const char* drawWord(int i) {
-        static const char* words[] = {
-            "apple",  "house",  "car",   "tree",  "cat",     "dog",    "sun",   "star",
-            "boat",   "fish",   "clock", "flower", "book",   "phone",  "chair", "heart",
-            "cloud",  "key",    "shoe",  "smile", "pizza",   "robot",  "ghost", "snake",
-            "crown",  "guitar", "rocket", "cake",  "moon",   "ladder"};
-        const int n = sizeof(words) / sizeof(words[0]);
-        return words[((i % n) + n) % n];
+    // Reset round state only -- packs/packCount are content, streamed once at
+    // session start, and must survive selectGame()/again clearing round state
+    // (mirrors wyrClear/scrambleClear, which likewise leave their packs alone).
+    void drawClear() {
+        _d.phase = 0;
+        _d.drawer = 0;
+        _d.drawerSeq = 0;
+        _d.wordSeq = 0;
+        _d.word[0] = '\0';
+        _d.round = 0;
+        _d.roundsTotal = 0;
+        _d.deadline = 0;
+        _d.revealUntil = 0;
+        _d.winner = 0;
+        _d.pack = 0; // no draw vote strip yet (see Task 3): always pack 0
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _d.vote[i] = -1;
     }
-
-    void drawClear() { _d = DrawState{}; }
 
     void drawAgain(uint8_t pid) {
         (void)pid;
@@ -1458,6 +1522,7 @@ private:
     }
 
     void drawStart(uint32_t now) {
+        if(_d.packCount == 0) return; // no pack streamed: refuse to start a round
         int used = connectedCount();
         if(used < 2) {
             _d.phase = 0;
@@ -1491,8 +1556,16 @@ private:
             _d.phase = 0;
             return;
         }
+        WordPack& dp = _d.packs[_d.pack];
+        if(dp.count == 0) { // empty pack: nothing to draw, end the game
+            _d.phase = 3;
+            haUartRoundResult("{\"draw\":\"final\"}");
+            pushAll();
+            return;
+        }
         _d.drawer = drawer;
-        strlcpy(_d.word, drawWord(_d.wordSeq++), sizeof(_d.word));
+        strlcpy(_d.word, dp.words[_d.wordSeq % dp.count].c_str(), sizeof(_d.word));
+        _d.wordSeq++;
         _d.phase = 1;
         _d.round++;
         _d.winner = 0;
@@ -2026,14 +2099,27 @@ private:
     }
 
     // ---------- word scramble race ----------
-    static const char* scrambleWord(int i) {
-        static const char* w[] = {
-            "planet", "guitar", "picture", "monster", "rainbow", "diamond", "kitchen",
-            "bicycle", "dolphin", "penguin", "volcano", "pyramid", "compass", "blanket",
-            "cactus", "harbor", "jungle", "magnet", "puzzle", "rocket", "sunset", "tiger",
-            "violin", "wizard", "anchor", "bridge", "castle", "forest", "island", "orbit"};
-        const int n = sizeof(w) / sizeof(w[0]);
-        return w[((i % n) + n) % n];
+    // Which pack wins the pre-round vote, mirroring wyrWinningPack(): most votes
+    // wins, ties broken at random, an untallied vote (total == 0) picks uniformly
+    // at random among all packs. Guard packCount == 0 so an empty game never
+    // indexes out of range.
+    int scrambleWinningPack() {
+        if(_scr.packCount == 0) return 0;
+        int votes[TRIVIA_MAX_TOPICS] = {0};
+        int total = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _scr.vote[i] >= 0 && _scr.vote[i] < _scr.packCount) {
+                votes[_scr.vote[i]]++;
+                total++;
+            }
+        if(total == 0) return (int)random(_scr.packCount);
+        int best = 0;
+        for(int i = 1; i < _scr.packCount; i++)
+            if(votes[i] > votes[best]) best = i;
+        int tie[TRIVIA_MAX_TOPICS], tn = 0;
+        for(int i = 0; i < _scr.packCount; i++)
+            if(votes[i] == votes[best]) tie[tn++] = i;
+        return tie[(int)random(tn)];
     }
 
     // Shuffle src into dst (NUL-terminated); retry a few times so it differs from src.
@@ -2056,7 +2142,11 @@ private:
         _scr.word[0] = '\0';
         _scr.scram[0] = '\0';
         _scr.solvedCount = 0;
-        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _scr.solved[i] = false;
+        _scr.pack = 0;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _scr.solved[i] = false;
+            _scr.vote[i] = -1;
+        }
     }
 
     void scrambleReady(uint8_t pid, bool val) {
@@ -2069,6 +2159,7 @@ private:
     }
 
     void scrambleCheckStart() {
+        if(_scr.packCount == 0) return;
         Party& pt = _scr.pt;
         if(pt.phase == 0 && partyAllReady(pt)) {
             pt.phase = 1;
@@ -2097,8 +2188,16 @@ private:
             pushAll();
             return;
         }
+        WordPack& p = _scr.packs[_scr.pack];
+        if(p.count == 0) { // empty pack: nothing to play, end the game
+            pt.phase = 4;
+            haUartRoundResult("{\"scramble\":\"final\"}");
+            pushAll();
+            return;
+        }
         pt.round++;
-        strlcpy(_scr.word, scrambleWord(_scr.wordSeq++), sizeof(_scr.word));
+        strlcpy(_scr.word, p.words[_scr.wordSeq % p.count].c_str(), sizeof(_scr.word));
+        _scr.wordSeq++;
         scrambleMake(_scr.scram, _scr.word);
         _scr.solvedCount = 0;
         for(int i = 0; i <= HA_MAX_PLAYERS; i++) _scr.solved[i] = false;
@@ -2145,6 +2244,9 @@ private:
             if(partyCountdownDone(pt, now)) {
                 pt.round = 0;
                 resetScoresAll();
+                // Lock in the winning pack now (votes are frozen during the
+                // countdown), mirroring WYR's pack lock.
+                _scr.pack = (uint8_t)scrambleWinningPack();
                 scrambleNextWord(now);
             }
         } else if(pt.phase == 2) {
