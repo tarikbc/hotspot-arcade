@@ -44,6 +44,15 @@ static inline void ha_upper(char* s) {
 #define PONG_MAX 4 // concurrent pong matches
 #define PONG_WIN 5 // points to win
 #define PONG_TICK_MS 33 // ~30 Hz
+// Court geometry, as fractions of the canvas width. The ball must reverse when its
+// EDGE meets the paddle FACE, so the contact plane is paddle thickness + ball half
+// width in from the wall. Bouncing at a bare 0.05 (as this did) left the ball
+// visibly short of the paddle, because the paddle only reaches 0.02 and the ball's
+// edge is 0.018 ahead of its centre. web/games/pong.js draws with these same two
+// numbers — change one side and the ball bounces off empty space again.
+#define PONG_PAD_W 0.02f // paddle thickness
+#define PONG_BALL_R 0.018f // ball half width
+#define PONG_HIT_X (PONG_PAD_W + PONG_BALL_R) // left contact plane; right is 1 - this
 
 // Whole-group "party" games (would-you-rather / scramble / reaction) share a
 // lobby -> countdown -> round -> reveal -> ... -> final skeleton (see Party).
@@ -1320,15 +1329,39 @@ private:
             ha_json_escape(text) + "\"}");
     }
 
-    // Emoji reaction: broadcast so it floats up on every client, in any game.
+    // Emoji reaction. Goes to whoever shares your screen: your opponent if you are
+    // in a 1v1 match, otherwise everyone else who is also un-matched. In the lobby
+    // and in every whole-group game nobody is in a match, so that second case is
+    // "everyone" and the behaviour there is unchanged. Without this, six concurrent
+    // duels spray emoji at each other about games nobody else can see.
+    //
+    // matchOf/pongMatchOf both gate on aIn/bIn, so a player who has returned to the
+    // lobby from a finished match correctly counts as un-matched.
+    //
+    // The sender is always included: the client renders nothing locally and waits
+    // for this echo, so dropping the sender would hide your own reaction from you.
+    //
     // Uses type "emoji" so it never collides with the reaction-duel game's
     // {t:"react",phase} state messages.
     void onReact(uint8_t pid, const char* emoji) {
         if(!emoji[0]) return;
-        haWsBroadcast(
-            String("{\"t\":\"emoji\",\"pid\":") + pid + ",\"nick\":\"" + ha_json_escape(_p[pid].nick) +
-            "\",\"avatar\":\"" + ha_json_escape(_p[pid].avatar) + "\",\"emoji\":\"" +
-            ha_json_escape(emoji) + "\"}");
+        String msg = String("{\"t\":\"emoji\",\"pid\":") + pid + ",\"nick\":\"" +
+                     ha_json_escape(_p[pid].nick) + "\",\"avatar\":\"" +
+                     ha_json_escape(_p[pid].avatar) + "\",\"emoji\":\"" +
+                     ha_json_escape(emoji) + "\"}";
+        DuelMatch* dm = matchOf(pid);
+        PongMatch* pm = dm ? nullptr : pongMatchOf(pid);
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used || !_p[i].wsId) continue;
+            bool peer;
+            if(dm)
+                peer = (i == dm->a || i == dm->b);
+            else if(pm)
+                peer = (i == pm->a || i == pm->b);
+            else
+                peer = !inAnyMatch(i);
+            if(peer) haWsSendWs(_p[i].wsId, msg);
+        }
     }
 
     void drawStart(uint32_t now) {
@@ -1594,9 +1627,9 @@ private:
                 m->by = 1;
                 m->vy = -m->vy;
             }
-            if(m->bx <= 0.05f) {
+            if(m->bx <= PONG_HIT_X) {
                 if(fabsf(m->by - m->p1) <= PADHALF) {
-                    m->bx = 0.05f;
+                    m->bx = PONG_HIT_X;
                     m->vx = -m->vx;
                     m->vy += (m->by - m->p1) * 0.05f;
                 } else {
@@ -1607,9 +1640,9 @@ private:
                         pongServe(m, 1);
                 }
             }
-            if(m->phase == 1 && m->bx >= 0.95f) {
+            if(m->phase == 1 && m->bx >= 1.0f - PONG_HIT_X) {
                 if(fabsf(m->by - m->p2) <= PADHALF) {
-                    m->bx = 0.95f;
+                    m->bx = 1.0f - PONG_HIT_X;
                     m->vx = -m->vx;
                     m->vy += (m->by - m->p2) * 0.05f;
                 } else {

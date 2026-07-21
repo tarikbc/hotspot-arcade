@@ -425,7 +425,15 @@ function startPlay() {
   // Uppercase to match how every name is shown (the ESP does the same on hello,
   // so this is just to avoid a flash of the typed casing before the echo lands).
   var n = $("nick").value.trim().slice(0, 12).toUpperCase();
-  if (!n) { $("nick").focus(); return; }
+  // Nobody should be stuck on the landing screen because they didn't want to think
+  // of a name. Give them one, and an avatar to match, rather than blocking on the
+  // empty field.
+  if (!n) {
+    n = randomNick();
+    A.avatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
+    $("nick").value = n;
+    buildAvatarPicker();
+  }
   A.nick = n;
   A.joined = true;
   setNick();
@@ -446,6 +454,16 @@ A.avatarOf = avatarOf;
 // ---- avatar picker (landing) --------------------------------------------
 var AVATARS = ["🙂", "😎", "🤖", "👾", "🐱", "🐶", "🦊", "🐸",
                "🦄", "🐙", "🐼", "🐯", "🍕", "🌮", "👻", "🚀"];
+
+/* Fallback nickname for players who hit Play with the field empty. Kept to 12
+   chars (the input's maxlength) and picked from short words that read well in a
+   leaderboard row. The number keeps two silent players from colliding. */
+var NICK_WORDS = ["NOVA", "PIXEL", "TURBO", "GHOST", "MANGO", "COMET", "NINJA",
+                  "VOLT", "ZEBRA", "ROCKET", "TIGER", "DISCO", "FUZZY", "BANDIT"];
+function randomNick() {
+  var w = NICK_WORDS[Math.floor(Math.random() * NICK_WORDS.length)];
+  return w + (10 + Math.floor(Math.random() * 90));
+}
 function buildAvatarPicker() {
   var wrap = $("avatars");
   if (!wrap) return;
@@ -487,18 +505,28 @@ function buildReactBar() {
 }
 // Float one emoji from the bottom; server echoes our own back so we don't
 // render locally (keeps every phone in sync, avoids a double).
-function floatReact(emoji, nick) {
+function floatReact(emoji, nick, avatar) {
   var layer = $("react-layer");
   if (!layer) return;
   var el = document.createElement("div");
   el.className = "float";
-  el.textContent = emoji;
-  el.style.left = (8 + Math.random() * 78) + "vw";
+  // Nicknames are player-typed, so these go in as text nodes. Never build this
+  // row by concatenating innerHTML.
+  var who = document.createElement("span");
+  who.className = "who";
+  who.textContent = (avatar || "") + " " + (nick || "");
+  var em = document.createElement("span");
+  em.className = "em";
+  em.textContent = emoji;
+  el.appendChild(who);
+  el.appendChild(em);
+  // Keep the whole pill on screen: it is wider than a bare glyph was.
+  el.style.left = (6 + Math.random() * 40) + "vw";
   layer.appendChild(el);
   setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2200);
 }
 A.handlers.emoji = function (m) {
-  floatReact(m.emoji, m.nick);
+  floatReact(m.emoji, m.nick, m.avatar);
   if (m.pid !== A.pid) A.vibe(8);
 };
 

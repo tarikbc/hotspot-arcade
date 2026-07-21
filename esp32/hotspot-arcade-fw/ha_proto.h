@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41 // 'A'
 #define HA_FW_MAGIC_2 0x52 // 'R'
 #define HA_FW_MAGIC_3 0x43 // 'C'  ("HARC" = Hotspot ARCade)
-#define HA_FW_VERSION 7 // v7: nicknames uppercased on hello, so every screen shows them the same
+#define HA_FW_VERSION 8 // v8: reactions scoped to your match/lobby group; pong contact plane fixed
 
 // Flipper -> ESP
 enum {

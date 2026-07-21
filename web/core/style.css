@@ -120,12 +120,6 @@ h3{margin:0; font-weight:600}
 .field input:focus{outline:none; border-color:var(--orange)}
 .hint{color:var(--text-dim); font-size:12px; text-align:center; margin:0}
 .hint b{color:var(--text)}
-.hint-link{
-  display:block; text-align:center; color:var(--orange); text-decoration:none;
-  font-weight:700; padding:10px; font-size:14px; text-transform:uppercase; letter-spacing:.06em;
-  border:2px solid var(--line); border-radius:var(--radius);
-}
-.hint-link:active{border-color:var(--orange)}
 
 /* Screen title row */
 .bar{display:flex; align-items:center; justify-content:space-between; gap:12px}
@@ -363,8 +357,13 @@ h3{margin:0; font-weight:600}
 
 /* Emoji reactions: floating layer + corner button */
 .react-layer{position:fixed; inset:0; z-index:34; pointer-events:none; overflow:hidden}
-.react-layer .float{position:absolute; bottom:14vh; font-size:34px; line-height:1;
+.react-layer .float{position:absolute; bottom:14vh; line-height:1;
+  display:flex; align-items:center; gap:6px; white-space:nowrap;
+  background:rgba(11,11,12,.72); border:1px solid var(--line); border-radius:999px;
+  padding:4px 10px 4px 8px;
   animation:float-up 2.2s ease-out forwards}
+.react-layer .float .who{font-size:12px; color:var(--text-dim); letter-spacing:.04em}
+.react-layer .float .em{font-size:28px}
 @keyframes float-up{
   0%{opacity:0; transform:translateY(0) scale(.6)}
   15%{opacity:1; transform:translateY(-10vh) scale(1.1)}
