@@ -6,6 +6,32 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-21
+
+Install is now a single file. Firmware **v7**.
+
+### Added
+
+- **The .fap bundles everything**: the phone web bundle and the trivia packs ship inside it
+  alongside the ESP firmware, so installing just `hotspot_arcade.fap` gives a playable app
+  with no SD setup. This also fixes the app-catalog build, which builds the Flipper subdir
+  alone and so had no web bundle to serve at all.
+- **User content still wins**: `/ext/apps_data/hotspot_arcade/trivia/*.txt` is offered
+  alongside the bundled packs (yours wins a name clash), and a `manifest.json` under
+  `.../web/` replaces the bundled client outright. `apps_assets` is rewritten from the .fap
+  on every launch, so user content deliberately lives in `apps_data`, which is never touched.
+- **The flasher continues on its own** once the freshly-flashed board reboots, so tapping
+  RESET is the only step. Continue remains for the failure path.
+
+### Changed
+
+- **Nicknames are shown in all caps everywhere.** Uppercased once on the ESP as the player
+  joins, so the phone UI, the Flipper roster, and the strings the engine composes itself
+  ("A vs B", "X got it", challenge toasts) all agree. ASCII only, so accented and emoji
+  nicknames pass through intact.
+- The flasher's done screen no longer claims the board reboots by itself. It always needs a
+  RESET tap, and the message is two lines so it can't render under the Continue button.
+
 ## [0.2.1] - 2026-07-21
 
 ### Fixed
@@ -119,7 +145,8 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tarikbc/hotspot-arcade/releases/tag/v0.1.0

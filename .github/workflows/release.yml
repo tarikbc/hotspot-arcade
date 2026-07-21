@@ -93,13 +93,24 @@ jobs:
           body: |
             Offline multiplayer party games hosted from a Flipper Zero + ESP32-S2 dev board.
 
+            ## Install
+
+            **You only need `hotspot_arcade.fap`.** Drop it in `/ext/apps/GPIO/` on the SD card.
+            The ESP firmware, the phone game bundle, and the trivia packs all ship inside it, so
+            there is no SD setup and nothing else to download. Flash the board from the app itself
+            with **Install Firmware**.
+
+            > **First launch takes a few seconds.** The .fap carries ~850 KB of bundled content and
+            > the Flipper unpacks it to the SD card on first open (and again after an update). The
+            > hourglass is the system loader doing that, not a hang. Later launches are instant.
+
             ## Assets
 
-            - `hotspot_arcade.fap`: the Flipper app (install to `/ext/apps/GPIO/`). It
-              **bundles the ESP firmware**, so you can flash the board on-device — no computer needed.
-            - `web-bundle.zip`: the phone game bundle; unzip into `/ext/apps_data/hotspot_arcade/web/`.
-            - `firmware-merged.bin`: the ESP32-S2 firmware as a single image, for flashing from a
-              computer (optional — the fap already carries it for on-device flashing).
+            - `hotspot_arcade.fap`: the whole thing. This is the one you want.
+            - `firmware-merged.bin`: the ESP32-S2 firmware as a single image, if you'd rather flash
+              the board from a computer (optional — the fap already carries it).
+            - `web-bundle.zip`: the phone game bundle on its own, for overriding the bundled client
+              from `/ext/apps_data/hotspot_arcade/web/` (optional).
 
             ## Flash the ESP32-S2 from a computer (optional)
 
