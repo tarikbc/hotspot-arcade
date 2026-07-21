@@ -39,8 +39,20 @@ jobs:
           # (flashable at 0x0), so the release ships one ESP image instead of four.
           BUILD=esp32/hotspot-arcade-fw/build
           BOOT_APP0="$HOME/.arduino15/packages/esp32/hardware/esp32/2.0.17/tools/partitions/boot_app0.bin"
-          ESPTOOL=$(ls "$HOME/.arduino15/packages/esp32/tools/esptool_py/"*/esptool 2>/dev/null | head -1)
-          "$ESPTOOL" --chip esp32s2 merge_bin -o "$BUILD/firmware-merged.bin" \
+          # The core ships esptool differently per platform: a standalone binary on
+          # macOS, but on Linux "esptool" is the Python *package directory*, with the
+          # entry point at esptool.py beside it. Resolve both, and fail loudly rather
+          # than letting an unset command take the whole release down.
+          ESPTOOL_DIR=$(ls -d "$HOME/.arduino15/packages/esp32/tools/esptool_py/"*/ 2>/dev/null | head -1)
+          if [ -f "$ESPTOOL_DIR/esptool" ] && [ -x "$ESPTOOL_DIR/esptool" ]; then
+            ESPTOOL="$ESPTOOL_DIR/esptool"
+          elif [ -f "$ESPTOOL_DIR/esptool.py" ]; then
+            ESPTOOL="python3 $ESPTOOL_DIR/esptool.py"
+          else
+            echo "esptool not found under $ESPTOOL_DIR"; ls -la "$ESPTOOL_DIR"; exit 1
+          fi
+          echo "Using esptool: $ESPTOOL"
+          $ESPTOOL --chip esp32s2 merge_bin -o "$BUILD/firmware-merged.bin" \
             0x1000  "$BUILD/hotspot-arcade-fw.ino.bootloader.bin" \
             0x8000  "$BUILD/hotspot-arcade-fw.ino.partitions.bin" \
             0xe000  "$BOOT_APP0" \
