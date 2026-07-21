@@ -1,10 +1,44 @@
 // Drives the WASM engine and routes its outbox: ws/all -> phone panels,
 // uart -> the Flipper panel. Every entry point drains, so nothing is buffered
 // across a frame boundary.
-import createEngine from "./engine.js";
 import { makeSocket, deliver, broadcast, getSocket, MAX_PHONES } from "./phones.js";
 
-const M = await createEngine();
+// Single on-page banner for "something is broken": fatal() (missing build outputs,
+// halts the module) and the tick-loop's repeating-error case (below, non-fatal, keeps
+// ticking) both funnel through showBanner() so there is exactly one banner implementation.
+let bannerShown = false;
+
+function showBanner(html) {
+  if (bannerShown) return;
+  bannerShown = true;
+  const banner = document.createElement("div");
+  banner.innerHTML = html;
+  banner.style.cssText =
+    "position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 10px;" +
+    "background:#5a1e1e;color:#ffd7d7;border-bottom:1px solid #a33;" +
+    "font:12px ui-monospace,SFMono-Regular,Menlo,monospace;";
+  document.body.prepend(banner);
+}
+
+function fatal(msg) {
+  showBanner(msg);
+  throw new Error(msg);
+}
+
+// A static `import createEngine from "./engine.js"` does NOT work as a guard: when
+// engine.js 404s (the normal state on a fresh clone — both build outputs are
+// git-ignored), the module graph fails to resolve before this file's body ever runs, so
+// no try/catch inside here can observe it (verified: with a static import, a 404'd
+// engine.js produces silent console errors and a blank page, no banner). A dynamic
+// import()'s rejection, unlike a static import's, IS observable from inside the
+// importing module, so that's what's used here.
+let M;
+try {
+  const { default: createEngine } = await import("./engine.js");
+  M = await createEngine();
+} catch (e) {
+  fatal("Engine failed to load. Run <code>sim/engine/build.sh</code> first.");
+}
 const uartSubscribers = [];
 let nextPhoneId = 1;
 
@@ -56,6 +90,22 @@ export function addPhone() {
   const frame = document.createElement("iframe");
   frame.src = "../../web/dist/index.html?harness=" + wsId;
   wrap.appendChild(frame);
+  // frame.onerror does NOT fire for a 404'd iframe: a bad src is a navigation inside the
+  // frame's own browsing context, not a resource-load failure on the <iframe> element
+  // itself, so the element's error event never triggers (verified against a real 404 from
+  // sim/serve.sh's http.server, which loads "successfully" as far as the element is
+  // concerned). Detect a missing build instead, once the frame finishes loading, by
+  // checking for the real client's own document rather than a generic error page —
+  // same-origin here, so contentDocument is reachable.
+  frame.addEventListener("load", () => {
+    let ok = false;
+    try {
+      ok = !!frame.contentDocument && frame.contentDocument.title === "Hotspot Arcade";
+    } catch (e) {
+      ok = true; // cross-origin: can't inspect it, assume the real client loaded
+    }
+    if (!ok) fatal("Client not built. Run <code>cd web && node build.mjs</code> first.");
+  });
   document.getElementById("phones").appendChild(wrap);
 }
 
@@ -85,18 +135,12 @@ const started = performance.now();
 // and gets its own log line.
 let lastLoopErrorMsg = null;
 let loopErrorRepeatCount = 0;
-let loopErrorBannerShown = false;
 
-function showLoopErrorBanner(message) {
-  if (loopErrorBannerShown) return;
-  loopErrorBannerShown = true;
-  const banner = document.createElement("div");
-  banner.textContent = "Simulator error (see console): " + message;
-  banner.style.cssText =
-    "position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 10px;" +
-    "background:#5a1e1e;color:#ffd7d7;border-bottom:1px solid #a33;" +
-    "font:12px ui-monospace,SFMono-Regular,Menlo,monospace;";
-  document.body.prepend(banner);
+// message is a caught JS error's .message — not attacker-controlled here, but escape it
+// anyway since it's not a literal we wrote (unlike fatal()'s call sites, which pass
+// hardcoded <code>...</code> strings straight into showBanner's innerHTML).
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function loop() {
@@ -117,7 +161,7 @@ function loop() {
     if (loopErrorRepeatCount === 3) {
       console.error(`hotspot-arcade sim: "${msg}" is repeating every frame; ` +
         "suppressing further console spam for it, see the on-page banner instead");
-      showLoopErrorBanner(msg);
+      showBanner("Simulator error (see console): " + escapeHtml(msg));
     }
   }
   // Always re-arm, even after a caught failure above — one bad frame must not stop the tick.
