@@ -6,6 +6,18 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-21
+
+Housekeeping only. No functional changes: the ESP firmware (**v6**) and the web bundle are
+byte-identical to 0.2.0, and this release exists so the published artifacts, the app-catalog
+submission, and `master` are all built from the same commit.
+
+### Changed
+
+- Flipper sources reformatted to the official `clang-format` (app-catalog lint).
+- App-catalog metadata: manifest, changelog, and qFlipper screenshots.
+- README refreshed with screenshots and a fixed build badge.
+
 ## [0.2.0] - 2026-07-18
 
 Ten games, player identity, emoji reactions, an on-device ESP flasher, and firmware
@@ -98,6 +110,7 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tarikbc/hotspot-arcade/releases/tag/v0.1.0
