@@ -6,6 +6,11 @@
 // CORRECT INDEX while the file uses `C:` for the third option, so a loader that
 // consumed this object raw would mark option C's text as the answer index. That
 // collision is what this test exists to catch.
+//
+// Beyond the happy path, this file also covers: a lowercase Answer: letter, an
+// unknown game id arriving mid-stream (must not corrupt or attach to trivia's
+// content), and a pack whose items are all malformed (must commit no question
+// at all, not a half-built one).
 import assert from "node:assert/strict";
 import { newEngine, lastToWs } from "./harness-lib.mjs";
 
@@ -50,9 +55,102 @@ const after = e.input(2, { t: "answer", c: (idx + 1) % 4 });
 const score = after.find((o) => o.to === "uart" && o.kind === "score" && o.pid === 1);
 assert.ok(score && score.delta > 0, "the Answer: letter mapped to the right option");
 
+// A lowercase Answer: letter (e.g. a hand-typed pack) must map to the same
+// option as its uppercase form. triviaLoadItem title-cases the letter before
+// comparing it to 'A'..'D'; if that branch regressed, "c" would fail the
+// `c < 'A' || c > 'D'` check and the whole question would be dropped instead
+// of mapping to option index 2.
+e.reset();
+e.contentClear();
+e.contentPack(HA_GAME_TRIVIA, "Lowercase Answer");
+e.contentItem(JSON.stringify({
+  q: "Lowercase answer letter?",
+  a: "wrong1", b: "wrong2", c: "right", d: "wrong3",
+  answer: "c", // lowercase -- must still resolve to option index 2
+}));
+
+e.selectGame(HA_GAME_TRIVIA);
+e.join(1, "ana");
+e.join(2, "bo");
+e.input(1, { t: "ready", ready: true });
+e.input(2, { t: "ready", ready: true });
+let lower = [];
+for (let ms = 1000; ms <= 8000; ms += 1000) lower = lower.concat(e.tick(ms));
+
+const lowerQ = lastToWs(lower, 1, "trivia");
+assert.ok(lowerQ, "a trivia question reached the player");
+assert.equal(lowerQ.msg.o[2], "right", "option index 2 (letter C) is the 'right' text");
+
+// The player who picked index 2 (not the letter -- the engine only ever
+// speaks in option indices) must be the one who scores.
+e.input(1, { t: "answer", c: 2 });
+const lowerAfter = e.input(2, { t: "answer", c: 0 });
+const lowerScore = lowerAfter.find((o) => o.to === "uart" && o.kind === "score" && o.pid === 1);
+assert.ok(lowerScore && lowerScore.delta > 0, "lowercase 'c' mapped to option index 2, and picking it scored");
+
+// An unknown game id (nothing currently uses 99) must be dropped harmlessly.
+// The stated constraint: a newer Flipper streaming a game this firmware
+// doesn't understand must not corrupt -- or attach to -- an older board's
+// existing content. Load a good trivia pack, then feed a pack+item under
+// game 99, then confirm trivia still plays its own question untouched.
+e.reset();
+e.contentClear();
+e.contentPack(HA_GAME_TRIVIA, "Still Works");
+e.contentItem(JSON.stringify({
+  q: "Does an unrelated pack corrupt trivia?",
+  a: "no", b: "definitely not", c: "nope", d: "not at all",
+  answer: "A",
+}));
+e.contentPack(99, "Some Future Game"); // unhandled game id
+e.contentItem(JSON.stringify({ arbitrary: "shape", nothing: "like trivia" }));
+
+e.selectGame(HA_GAME_TRIVIA);
+e.join(1, "ana");
+e.join(2, "bo");
+e.input(1, { t: "ready", ready: true });
+e.input(2, { t: "ready", ready: true });
+let unknown = [];
+for (let ms = 1000; ms <= 8000; ms += 1000) unknown = unknown.concat(e.tick(ms));
+
+const unknownQ = lastToWs(unknown, 1, "trivia");
+assert.ok(unknownQ, "a trivia question reached the player");
+assert.equal(unknownQ.msg.phase, "question", "trivia still reaches a real question");
+assert.equal(unknownQ.msg.o.length, 4);
+assert.ok(unknownQ.msg.o.includes("no"), "the trivia content itself is untouched by the game-99 pack");
+
+const unknownIdx = unknownQ.msg.o.indexOf("no");
+e.input(1, { t: "answer", c: unknownIdx });
+const unknownAfter = e.input(2, { t: "answer", c: (unknownIdx + 1) % 4 });
+const unknownScore = unknownAfter.find((o) => o.to === "uart" && o.kind === "score" && o.pid === 1);
+assert.ok(unknownScore && unknownScore.delta > 0, "scoring still works normally after the game-99 pack");
+
 // A block that isn't a question must be skipped, not stored as a broken one.
+// Prove it through observable behaviour, since there's no direct accessor for
+// a topic's question count: a pack fed ONLY malformed items must reach the
+// question phase with zero real content (n:0, empty q/options), not a
+// half-built question. Reset first so the earlier good packs above can't
+// mask the result.
+e.reset();
 e.contentClear();
 e.contentPack(HA_GAME_TRIVIA, "Broken");
 e.contentItem(JSON.stringify({ q: "Only two options?", a: "x", b: "y" }));
 e.contentItem(JSON.stringify({ note: "no question here at all" }));
+
+e.selectGame(HA_GAME_TRIVIA);
+e.join(1, "ana");
+e.join(2, "bo");
+e.input(1, { t: "ready", ready: true });
+e.input(2, { t: "ready", ready: true });
+let broken = [];
+for (let ms = 1000; ms <= 8000; ms += 1000) broken = broken.concat(e.tick(ms));
+
+const brokenQ = lastToWs(broken, 1, "trivia");
+assert.ok(brokenQ, "the topic itself still exists (it has a name, just no questions)");
+// topicCount > 0 is enough for triviaCheckStart to run the countdown regardless
+// of qcount, so the phase does reach "question" -- just with nothing in it.
+assert.equal(brokenQ.msg.phase, "question", "the countdown still elapses (a topic exists, just an empty one)");
+assert.equal(brokenQ.msg.n, 0, "zero questions were committed from the malformed items");
+assert.ok(brokenQ.msg.o.every((opt) => opt === ""), "no option text leaked from a half-built question");
+assert.equal(brokenQ.msg.q, "", "no question text leaked from a half-built question");
+
 console.log("content: OK");
