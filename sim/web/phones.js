@@ -4,7 +4,11 @@ const MAX_PHONES = 8; // AP_MAX_CONN in the firmware
 
 const sockets = new Map(); // wsId -> socket object handed to a client
 
-export function makeSocket(wsId, onSend) {
+// onTeardown(wsId) is the engine-side disconnect (ha_disconnect); it runs at most once
+// per socket no matter which path (an explicit close() call, or the harness removing the
+// panel) gets there first — see the `closed` guard below.
+export function makeSocket(wsId, onSend, onTeardown) {
+  let closed = false;
   const sock = {
     readyState: 1,
     onopen: null,
@@ -12,7 +16,11 @@ export function makeSocket(wsId, onSend) {
     onclose: null,
     send(data) { onSend(wsId, data); },
     close() {
+      if (closed) return; // already torn down (e.g. the harness got here first) — no-op
+      closed = true;
       sock.readyState = 3;
+      sockets.delete(wsId);
+      if (onTeardown) onTeardown(wsId);
       if (sock.onclose) sock.onclose({});
     },
   };
@@ -32,5 +40,5 @@ export function broadcast(msg) {
   for (const wsId of sockets.keys()) deliver(wsId, msg);
 }
 
-export function dropSocket(wsId) { sockets.delete(wsId); }
+export function getSocket(wsId) { return sockets.get(wsId); }
 export { MAX_PHONES };

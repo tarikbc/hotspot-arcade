@@ -2,7 +2,7 @@
 // uart -> the Flipper panel. Every entry point drains, so nothing is buffered
 // across a frame boundary.
 import createEngine from "./engine.js";
-import { makeSocket, deliver, broadcast, dropSocket, MAX_PHONES } from "./phones.js";
+import { makeSocket, deliver, broadcast, getSocket, MAX_PHONES } from "./phones.js";
 
 const M = await createEngine();
 const uartSubscribers = [];
@@ -41,7 +41,9 @@ export function subscribeUart(fn) { uartSubscribers.push(fn); }
 window.HA_HARNESS = {
   connect(id) {
     const wsId = Number(id);
-    return makeSocket(wsId, (sid, data) => engine.input(sid, data));
+    // The teardown callback is what lets close() (whichever path reaches it first, see
+    // phones.js) tell the engine a player left, same as removePhone() below.
+    return makeSocket(wsId, (sid, data) => engine.input(sid, data), (sid) => engine.disconnect(sid));
   },
 };
 
@@ -62,18 +64,63 @@ export function removePhone() {
   if (!all.length) return;
   const wrap = all[all.length - 1];
   const wsId = Number(wrap.dataset.wsId);
-  // Tell the engine the socket went away, exactly as AsyncWebServer would on a real
-  // disconnect. Without this the player lingers in the roster and in any live match.
-  engine.disconnect(wsId);
-  dropSocket(wsId);
+  // Route teardown through the socket's own close(), exactly as if the client (or a real
+  // AsyncWebServer disconnect) had gotten there first. That single path tells the engine
+  // the player went away and drops the socket from phones.js's map, and close()'s own
+  // guard means it's harmless if the client also calls close() around the same time.
+  const sock = getSocket(wsId);
+  if (sock) sock.close();
   wrap.remove();
 }
 
 // Engine clock. The firmware ticks from millis(); here rAF drives it.
 const started = performance.now();
+
+// A bad frame (e.g. ha_drain() handing drainRaw() a malformed/empty string, or a routed
+// handler throwing) must not wedge the sim forever — requestAnimationFrame(loop) has to
+// run no matter what happened above it. We still don't want an error that repeats every
+// frame (~60/sec) to flood the console, so: log the first occurrence of each distinct
+// error, then once it's clearly not a one-off, log a single "giving up on logging this"
+// note and put up a one-time visible banner. A later, different error resets the count
+// and gets its own log line.
+let lastLoopErrorMsg = null;
+let loopErrorRepeatCount = 0;
+let loopErrorBannerShown = false;
+
+function showLoopErrorBanner(message) {
+  if (loopErrorBannerShown) return;
+  loopErrorBannerShown = true;
+  const banner = document.createElement("div");
+  banner.textContent = "Simulator error (see console): " + message;
+  banner.style.cssText =
+    "position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 10px;" +
+    "background:#5a1e1e;color:#ffd7d7;border-bottom:1px solid #a33;" +
+    "font:12px ui-monospace,SFMono-Regular,Menlo,monospace;";
+  document.body.prepend(banner);
+}
+
 function loop() {
-  call("ha_tick", ["number"], [Math.floor(performance.now() - started)]);
-  drain();
+  try {
+    call("ha_tick", ["number"], [Math.floor(performance.now() - started)]);
+    drain();
+    lastLoopErrorMsg = null;
+    loopErrorRepeatCount = 0;
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    if (msg === lastLoopErrorMsg) {
+      loopErrorRepeatCount++;
+    } else {
+      lastLoopErrorMsg = msg;
+      loopErrorRepeatCount = 1;
+      console.error("hotspot-arcade sim: tick/drain failed, dropping this frame:", err);
+    }
+    if (loopErrorRepeatCount === 3) {
+      console.error(`hotspot-arcade sim: "${msg}" is repeating every frame; ` +
+        "suppressing further console spam for it, see the on-page banner instead");
+      showLoopErrorBanner(msg);
+    }
+  }
+  // Always re-arm, even after a caught failure above — one bad frame must not stop the tick.
   requestAnimationFrame(loop);
 }
 
