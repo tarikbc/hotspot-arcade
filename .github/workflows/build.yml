@@ -82,3 +82,54 @@ jobs:
         with:
           name: hotspot-arcade-firmware
           path: esp32/hotspot-arcade-fw/build/*.bin
+
+  bundled-assets:
+    # The fap ships the web bundle, trivia packs, and ESP firmware images as committed
+    # build outputs (the app catalog builds flipper/hotspot-arcade/ alone and never runs
+    # tools/build-fap.sh, so anything untracked is missing from the catalog's fap).
+    # Nothing else notices when they go stale, and a stale bundle ships a broken app:
+    # v0.2.0 released a fap with no firmware in it, and a later commit left v6 images in
+    # a fap that required v7. This job is that missing alarm.
+    name: Bundled assets are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Web bundle matches assets/web
+        # The web build is byte-reproducible, so compare the real thing.
+        run: |
+          cd web && node build.mjs && cd ..
+          for f in index.html.gz manifest.json; do
+            if ! cmp -s "web/dist/$f" "flipper/hotspot-arcade/assets/web/$f"; then
+              echo "::error::flipper/hotspot-arcade/assets/web/$f is stale. Run tools/build-fap.sh and commit the result."
+              exit 1
+            fi
+          done
+
+      - name: Trivia packs match assets/trivia
+        run: |
+          bundled=flipper/hotspot-arcade/assets/trivia
+          for f in trivia-packs/*.txt; do
+            if ! cmp -s "$f" "$bundled/$(basename "$f")"; then
+              echo "::error::$bundled/$(basename "$f") is stale or missing. Run tools/build-fap.sh and commit the result."
+              exit 1
+            fi
+          done
+          if [ "$(ls -1 trivia-packs/*.txt | wc -l)" != "$(ls -1 "$bundled"/*.txt | wc -l)" ]; then
+            echo "::error::$bundled has packs that trivia-packs/ doesn't. Run tools/build-fap.sh and commit the result."
+            exit 1
+          fi
+
+      - name: ESP firmware images were built from the current sources
+        # The images can't be diffed (ESP-IDF embeds a build timestamp), so compare a
+        # hash of the sources that produced them. See tools/asset-stamp.sh.
+        run: |
+          recorded=$(cat flipper/hotspot-arcade/.bundled-fw.sha256 2>/dev/null || echo missing)
+          current=$(tools/asset-stamp.sh)
+          if [ "$recorded" != "$current" ]; then
+            echo "::error::The ESP sources changed but flipper/hotspot-arcade/assets/firmware/ wasn't rebuilt (recorded $recorded, current $current). Run tools/build-fap.sh and commit the refreshed images."
+            exit 1
+          fi

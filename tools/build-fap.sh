@@ -98,6 +98,8 @@ if [ ! -f "$ASSETS_FW/flash.txt" ]; then
     echo "ERROR: $ASSETS_FW/flash.txt is missing (it should be committed)." >&2
     exit 1
 fi
+# Record which ESP sources these images came from, so CI can catch a stale commit.
+"$REPO/tools/asset-stamp.sh" > "$REPO/flipper/hotspot-arcade/.bundled-fw.sha256"
 ls -la "$ASSETS_FW"
 
 # --- populate assets/web/ and assets/trivia/ ---
