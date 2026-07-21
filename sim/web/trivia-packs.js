@@ -5,7 +5,7 @@
 // this same format in C. It is the only rule-ish logic implemented twice in this
 // project (see the design doc). This function mirrors that C state machine line for
 // line, on purpose, rather than taking the obviously-simpler "split on ---" shortcut:
-// per trivia-packs/README.md line 35, blocks may be separated by blank lines alone,
+// per packs/README.md line 39, blocks may be separated by blank lines alone,
 // with no "---" at all, and the C parser has no notion of "---" as a delimiter — it
 // just ignores it as an unrecognized line. A pack with no "---" would parse as one
 // giant block under a naive splitter and silently yield zero questions.
@@ -70,7 +70,7 @@ export async function loadSamplePacks(names = ["general", "movies", "science"]) 
   const packs = [];
   for (const n of names) {
     try {
-      const res = await fetch(`../../trivia-packs/${n}.txt`);
+      const res = await fetch(`../../packs/trivia/${n}.txt`);
       if (res.ok) packs.push(parsePack(await res.text(), n));
       else console.warn(`trivia pack "${n}" failed to load: HTTP ${res.status}`);
     } catch (e) { console.warn(`trivia pack "${n}" failed to load:`, e); }

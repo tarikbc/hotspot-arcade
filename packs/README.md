@@ -1,8 +1,12 @@
-# Trivia packs
+# Content packs
 
-Plain-text question packs for the Hotspot Arcade trivia game. The Flipper parses
-this format directly on-device, so it is deliberately trivial: no JSON, no
-escaping, one question per block.
+Plain-text content for the pack-driven games, one directory per game
+(`packs/trivia/`, and in Phase 2 `packs/wyr/`, `packs/scramble/`, `packs/draw/`).
+
+The format is the same for every game: `Key: value` lines, with a line of `---` or a
+blank line between blocks. A `Pack:` key names the pack; without one the filename is
+used. The Flipper streams these blocks without interpreting them — each game's meaning
+for the keys lives in the ESP firmware.
 
 ## Format
 

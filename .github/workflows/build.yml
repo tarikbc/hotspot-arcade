@@ -114,17 +114,17 @@ jobs:
             exit 1
           fi
 
-      - name: Trivia packs match assets/trivia
+      - name: Content packs match assets/packs
         run: |
-          bundled=flipper/hotspot-arcade/assets/trivia
-          for f in trivia-packs/*.txt; do
-            if ! cmp -s "$f" "$bundled/$(basename "$f")"; then
-              echo "::error::$bundled/$(basename "$f") is stale or missing. Run tools/build-fap.sh and commit the result."
+          for pack in packs/*/*.txt; do
+            bundled="flipper/hotspot-arcade/assets/packs/${pack#packs/}"
+            if ! cmp -s "$pack" "$bundled"; then
+              echo "::error::$bundled is stale or missing. Run tools/build-fap.sh and commit the result."
               exit 1
             fi
           done
-          if [ "$(ls -1 trivia-packs/*.txt | wc -l)" != "$(ls -1 "$bundled"/*.txt | wc -l)" ]; then
-            echo "::error::$bundled has packs that trivia-packs/ doesn't. Run tools/build-fap.sh and commit the result."
+          if [ "$(ls -1 packs/*/*.txt | wc -l)" != "$(ls -1 flipper/hotspot-arcade/assets/packs/*/*.txt | wc -l)" ]; then
+            echo "::error::assets/packs has packs that packs/ doesn't. Run tools/build-fap.sh and commit the result."
             exit 1
           fi
 

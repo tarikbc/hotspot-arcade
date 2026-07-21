@@ -10,7 +10,7 @@ import { parsePack } from "../web/trivia-packs.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// (a) trivia-packs/README.md line 35: blocks may be separated by blank lines alone,
+// (a) packs/README.md line 39: blocks may be separated by blank lines alone,
 // with no "---" at all. The C parser has no notion of "---" as a delimiter -- it
 // flushes on the next "Q:" line (or end of input) regardless. A pack that never uses
 // "---" must still parse every question, not collapse into one giant block.
@@ -86,7 +86,7 @@ Answer: D
 // "---" throughout, so this also proves the rewrite didn't break the old path while
 // fixing the new one.
 {
-  const path = join(here, "..", "..", "trivia-packs", "general.txt");
+  const path = join(here, "..", "..", "packs", "trivia", "general.txt");
   const text = readFileSync(path, "utf8");
   const pack = parsePack(text, "general");
   assert.equal(pack.name, "General Knowledge");

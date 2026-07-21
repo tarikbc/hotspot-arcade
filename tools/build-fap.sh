@@ -22,7 +22,7 @@ ESP_DIR="$REPO/esp32/hotspot-arcade-fw"
 ESP_BUILD="$ESP_DIR/build"
 ASSETS_FW="$REPO/flipper/hotspot-arcade/assets/firmware"
 ASSETS_WEB="$REPO/flipper/hotspot-arcade/assets/web"
-ASSETS_TRIVIA="$REPO/flipper/hotspot-arcade/assets/trivia"
+ASSETS_PACKS="$REPO/flipper/hotspot-arcade/assets/packs"
 WEB_DIST="$REPO/web/dist"
 FQBN="esp32:esp32:esp32s2:PartitionScheme=huge_app"
 CORE_VER="2.0.17"
@@ -102,7 +102,7 @@ fi
 "$REPO/tools/asset-stamp.sh" > "$REPO/flipper/hotspot-arcade/.bundled-fw.sha256"
 ls -la "$ASSETS_FW"
 
-# --- populate assets/web/ and assets/trivia/ ---
+# --- populate assets/web/ and assets/packs/ ---
 # These ship inside the fap too, so a fresh install has something to serve without any
 # SD setup. Like the firmware images they are build//source copies, kept committed so
 # the app catalog (which builds flipper/hotspot-arcade/ alone, without this script) gets
@@ -120,13 +120,18 @@ for gz in "$WEB_DIST"/*.gz; do
     [ -f "$gz" ] && cp "$gz" "$ASSETS_WEB/"
 done
 
-echo "==> Copying trivia packs into $ASSETS_TRIVIA"
-mkdir -p "$ASSETS_TRIVIA"
-rm -f "$ASSETS_TRIVIA"/*.txt
-for pack in "$REPO"/trivia-packs/*.txt; do
-    [ -f "$pack" ] && cp "$pack" "$ASSETS_TRIVIA/"
+echo "==> Copying content packs into $ASSETS_PACKS"
+rm -rf "$ASSETS_PACKS"
+for gamedir in "$REPO"/packs/*/; do
+    [ -d "$gamedir" ] || continue
+    game=$(basename "$gamedir")
+    mkdir -p "$ASSETS_PACKS/$game"
+    for pack in "$gamedir"*.txt; do
+        [ -f "$pack" ] && cp "$pack" "$ASSETS_PACKS/$game/"
+    done
 done
-ls -la "$ASSETS_WEB" "$ASSETS_TRIVIA"
+ls -la "$ASSETS_WEB"
+ls -la "$ASSETS_PACKS"/*
 
 # --- build the fap (bundles assets/) ---
 echo "==> Running ufbt"
