@@ -307,6 +307,59 @@ public:
         tp.qcount++;
     }
 
+    // ---- generic content ingest ------------------------------------------------
+    // The Flipper streams packs it does not understand: "Key: value" blocks, shipped
+    // as JSON objects of the file's own keys. All game semantics live here, so adding
+    // a content game needs a loader below and nothing on the Flipper.
+    void contentClear() {
+        triviaTopicsClear();
+        _packGame = 0;
+    }
+
+    void contentPack(uint8_t game, const char* name) {
+        _packGame = game;
+        if(game == HA_GAME_TRIVIA) triviaAddTopic(name);
+    }
+
+    void contentItem(const char* json) {
+        if(!_packGame) return; // no pack begun: nothing to attach to
+        if(_packGame == HA_GAME_TRIVIA) triviaLoadItem(json);
+        // Unknown game ids are dropped on purpose: a newer Flipper must not be able
+        // to corrupt an older board's state.
+    }
+
+    // Map a pack file's keys into TriviaQ. The file says {q,a,b,c,d,answer}; the
+    // struct wants {q, o[4], correct}. Note "c" means option C here and the correct
+    // INDEX in the struct — consuming this object raw would silently mark the wrong
+    // answer, so every field is mapped explicitly.
+    bool triviaLoadItem(const char* json) {
+        if(_topicCount == 0) return false;
+        TriviaTopic& tp = _topics[_topicCount - 1];
+        if(tp.qcount >= TRIVIA_MAX_QS) return false;
+
+        char buf[200];
+        if(!ha_json_str(json, "q", buf, sizeof(buf))) return false;
+        TriviaQ q;
+        q.q = buf;
+
+        static const char* keys[4] = {"a", "b", "c", "d"};
+        for(int k = 0; k < 4; k++) {
+            if(!ha_json_str(json, keys[k], buf, sizeof(buf))) return false; // needs all four
+            q.o[k] = buf;
+        }
+
+        // "Answer: B" -> 1. Anything else is not a usable question.
+        if(!ha_json_str(json, "answer", buf, sizeof(buf)) || !buf[0]) return false;
+        char c = buf[0];
+        if(c >= 'a' && c <= 'z') c -= 32;
+        if(c < 'A' || c > 'D') return false;
+        q.correct = (uint8_t)(c - 'A');
+
+        tp.qs[tp.qcount] = q;
+        tp.qcount++;
+        return true;
+    }
+
     void roundEnd() {
         if(_active == HA_GAME_TRIVIA)
             triviaClear();
@@ -422,6 +475,7 @@ private:
     Trivia _t = {};
     TriviaTopic _topics[TRIVIA_MAX_TOPICS] = {};
     uint8_t _topicCount = 0;
+    uint8_t _packGame = 0; // HA_GAME_* of the pack currently being streamed, 0 = none
     DuelMatch _m[DUEL_MAX_MATCHES] = {};
     DuelChallenge _c[DUEL_MAX_CHALLENGES] = {};
     DrawState _d = {};

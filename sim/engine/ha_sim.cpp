@@ -100,6 +100,9 @@ void ha_select_game(int id) { engine.selectGame((uint8_t)id); }
 void ha_trivia_clear() { engine.triviaTopicsClear(); }
 void ha_trivia_add_topic(const char* name) { engine.triviaAddTopic(name); }
 void ha_trivia_add_q(const char* json) { engine.triviaAddQ(json); }
+void ha_content_clear() { engine.contentClear(); }
+void ha_content_pack(int game, const char* name) { engine.contentPack((uint8_t)game, name); }
+void ha_content_item(const char* json) { engine.contentItem(json); }
 void ha_round_end() { engine.roundEnd(); }
 void ha_reset_scores() { engine.resetScores(); }
 

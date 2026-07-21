@@ -19,6 +19,12 @@ export async function newEngine() {
     triviaClear: () => { M.ccall("ha_trivia_clear", null, [], []); return drain(); },
     triviaAddTopic: (name) => { M.ccall("ha_trivia_add_topic", null, ["string"], [name]); return drain(); },
     triviaAddQ: (json) => { M.ccall("ha_trivia_add_q", null, ["string"], [json]); return drain(); },
+    contentClear: () => { M.ccall("ha_content_clear", null, [], []); return drain(); },
+    contentPack: (game, name) => {
+      M.ccall("ha_content_pack", null, ["number", "string"], [game, name]);
+      return drain();
+    },
+    contentItem: (json) => { M.ccall("ha_content_item", null, ["string"], [json]); return drain(); },
   };
   api.join = (wsId, nick) => api.input(wsId, { t: "hello", nick, avatar: "🙂" });
   return api;
