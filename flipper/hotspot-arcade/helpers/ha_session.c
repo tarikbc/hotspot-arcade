@@ -52,6 +52,14 @@ static int player_find(HotspotArcadeApp* app, uint8_t pid) {
     return -1;
 }
 
+// Nicknames are shown uppercase everywhere. The ESP already uppercases on hello,
+// but a board running older firmware doesn't, and the roster is on every screen
+// here. ASCII only, so UTF-8 nicknames pass through untouched.
+static void nick_upper(char* s) {
+    for(; s && *s; s++)
+        if(*s >= 'a' && *s <= 'z') *s -= 32;
+}
+
 static void player_join(HotspotArcadeApp* app, uint8_t pid, const char* nick) {
     int idx = player_find(app, pid);
     if(idx < 0) {
@@ -66,7 +74,8 @@ static void player_join(HotspotArcadeApp* app, uint8_t pid, const char* nick) {
     HaPlayer* p = &app->players[idx];
     p->used = true;
     p->pid = pid;
-    strlcpy(p->nick, (nick && nick[0]) ? nick : "Player", HA_NICK_LEN);
+    strlcpy(p->nick, (nick && nick[0]) ? nick : "PLAYER", HA_NICK_LEN);
+    nick_upper(p->nick);
     p->score = 0;
 }
 
@@ -445,6 +454,7 @@ static void dispatch_frame(HotspotArcadeApp* app) {
             size_t nl = len - 1 < HA_NICK_LEN - 1 ? (size_t)(len - 1) : HA_NICK_LEN - 1;
             memcpy(nick, p + 1, nl);
             nick[nl] = '\0';
+            nick_upper(nick);
             player_join(app, p[0], nick);
             FuriString* c = furi_string_alloc();
             furi_string_printf(c, "JOIN %s", nick);
