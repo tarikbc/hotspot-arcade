@@ -9,10 +9,10 @@ import { loadGamePacks } from "./trivia-packs.js";
 // id. Mirrors ha_content_stream_packs in ha_session.c so the sim exercises all four
 // content games, not just trivia.
 const PACK_DIRS = [
-  { game: 1, dir: "trivia", names: ["general", "movies", "science"] },
-  { game: 8, dir: "wyr", names: ["everyday", "spooky", "spicy"] },
-  { game: 9, dir: "scramble", names: ["classic", "animals"] },
-  { game: 5, dir: "draw", names: ["classic", "movies"] },
+  { game: 1, dir: "trivia", names: ["general", "movies", "science", "geography", "music", "games"] },
+  { game: 8, dir: "wyr", names: ["everyday", "spooky", "spicy", "superpowers", "timespace", "absurd"] },
+  { game: 9, dir: "scramble", names: ["classic", "animals", "food", "space", "music", "sports"] },
+  { game: 5, dir: "draw", names: ["classic", "movies", "food", "nature", "animals", "fantasy"] },
 ];
 
 // Ids copied verbatim from flipper/hotspot-arcade/ha_proto.h (HA_GAME_*).
