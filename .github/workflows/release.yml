@@ -21,7 +21,7 @@ jobs:
       # for the core's esptool elf2image step). A setup-python before this would
       # shadow it and break esptool with "No module named 'serial'".
       # AsyncTCP + ESPAsyncWebServer are vendored in esp32/libs/.
-      - name: Build ESP32-S2 firmware
+      - name: Build ESP32 firmware (both boards)
         run: |
           mkdir -p "$HOME/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
@@ -57,6 +57,20 @@ jobs:
             0x8000  "$BUILD/hotspot-arcade-fw.ino.partitions.bin" \
             0xe000  "$BOOT_APP0" \
             0x10000 "$BUILD/hotspot-arcade-fw.ino.bin"
+          # Now the ESP32 WROOM board (plain esp32 FQBN, matching tools/build-fap.sh),
+          # merged the same way into wroom-merged.bin so WROOM owners can also flash
+          # from a computer instead of only on-device.
+          WBUILD=esp32/hotspot-arcade-fw/build-wroom
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32 \
+            --libraries esp32/libs \
+            --output-dir "$WBUILD" \
+            esp32/hotspot-arcade-fw
+          $ESPTOOL --chip esp32 merge_bin -o "$WBUILD/wroom-merged.bin" \
+            0x1000  "$WBUILD/hotspot-arcade-fw.ino.bootloader.bin" \
+            0x8000  "$WBUILD/hotspot-arcade-fw.ino.partitions.bin" \
+            0xe000  "$BOOT_APP0" \
+            0x10000 "$WBUILD/hotspot-arcade-fw.ino.bin"
 
       - uses: actions/setup-node@v4
         with:
@@ -110,20 +124,29 @@ jobs:
 
             - `hotspot_arcade.fap`: the whole thing. This is the one you want.
             - `firmware-merged.bin`: the ESP32-S2 firmware as a single image, if you'd rather flash
-              the board from a computer (optional — the fap already carries it).
+              that board from a computer (optional — the fap already carries it).
+            - `wroom-merged.bin`: the same, for an ESP32 WROOM board (optional — the fap carries it too).
             - `web-bundle.zip`: the phone game bundle on its own, for overriding the bundled client
               from `/ext/apps_data/hotspot_arcade/web/` (optional).
 
-            ## Flash the ESP32-S2 from a computer (optional)
+            ## Flash the ESP board from a computer (optional)
 
-            Download mode: hold BOOT, tap RESET, release BOOT. **Never `--erase-all` on the S2.**
+            Or skip this entirely and use **Install Firmware** on the Flipper — it flashes either board.
+
+            **ESP32-S2 dev board** — download mode: hold BOOT, tap RESET, release BOOT.
+            **Never `--erase-all` on the S2.** Then tap RESET to run.
 
             ```sh
             esptool.py --chip esp32s2 --before default_reset --after hard_reset write_flash 0x0 firmware-merged.bin
             ```
 
-            Then tap RESET to run. Or skip this entirely and use **Install Firmware** on the Flipper.
+            **ESP32 WROOM board:**
+
+            ```sh
+            esptool.py --chip esp32 --before default_reset --after hard_reset write_flash 0x0 wroom-merged.bin
+            ```
           files: |
             flipper/hotspot-arcade/dist/hotspot_arcade.fap
             web/web-bundle.zip
             esp32/hotspot-arcade-fw/build/firmware-merged.bin
+            esp32/hotspot-arcade-fw/build-wroom/wroom-merged.bin

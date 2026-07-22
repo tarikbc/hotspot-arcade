@@ -5,6 +5,7 @@ flipper/hotspot-arcade/.vscode/
 
 # ESP build output
 esp32/hotspot-arcade-fw/build/
+esp32/hotspot-arcade-fw/build-wroom/
 
 # Bundled ESP firmware images: these ARE committed so the app-catalog build
 # (bare ufbt at a commit) ships a working on-device flasher. Regenerate them
