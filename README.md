@@ -65,21 +65,15 @@ Pick a nickname and an emoji avatar, then land in the lobby:
   <img src="docs/img/web-trivia-final.png" alt="Trivia final podium" width="19%">
 </p>
 
-The whole-group party games (Would You Rather, Word Scramble, Reaction Duel) share the
-ready-up lobby, countdown, and the collapsible live leaderboard:
+The other phone games — the shared-lobby party games (Would You Rather, Word Scramble,
+Reaction Duel), Draw &amp; Guess, and a real-time Pong (animated below):
 
 <p align="center">
-  <img src="docs/img/web-wyr.png" alt="Would You Rather: A/B poll with the live vote split" width="19%">
+  <img src="docs/img/web-wyr.gif" alt="Would You Rather: A/B poll with the live vote split" width="19%">
   <img src="docs/img/web-scramble.png" alt="Word Scramble: unscramble the letters and type the word" width="19%">
   <img src="docs/img/web-react.png" alt="Reaction Duel: fastest finger with reaction time and leaderboard" width="19%">
-  <img src="docs/img/web-pong.png" alt="Pong: real-time 1v1 rally with on-screen paddles" width="19%">
-</p>
-
-Draw &amp; Guess relays the drawer's strokes to every guesser's canvas in real time — the
-drawer's side (with the secret word) beside a guesser's side (blanks plus the live guess chat):
-
-<p align="center">
-  <img src="docs/img/web-draw.png" alt="Draw &amp; Guess: the drawer's view showing the secret word beside a guesser's view with blanks and the live guess chat" width="46%">
+  <img src="docs/img/web-draw.gif" alt="Draw &amp; Guess: the drawer's canvas with strokes forming and the secret word" width="19%">
+  <img src="docs/img/web-pong.gif" alt="Pong: real-time 1v1 rally with on-screen paddle controls" width="19%">
 </p>
 
 The 1v1 board duels (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes, Reversi):
@@ -88,7 +82,7 @@ The 1v1 board duels (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes, Reversi):
   <img src="docs/img/web-connect4.png" alt="Connect Four: 7x6 board mid-game, your turn" width="19%">
   <img src="docs/img/web-ttt.png" alt="Tic-Tac-Toe: 3x3 duel, your turn" width="19%">
   <img src="docs/img/web-dots.png" alt="Dots &amp; Boxes: claimed boxes and live score" width="19%">
-  <img src="docs/img/web-reversi.png" alt="Reversi/Othello: 8x8 board with legal-move hints and disc counts" width="19%">
+  <img src="docs/img/web-reversi.gif" alt="Reversi/Othello: 8x8 board with legal-move hints and disc counts" width="19%">
 </p>
 
 **On the Flipper** — the host device shows the app menu, the live broadcasting dashboard
