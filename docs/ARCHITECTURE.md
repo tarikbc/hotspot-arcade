@@ -81,7 +81,7 @@ A `ViewDispatcher` + `SceneManager` app, same shape as flytrap:
   the feed — there is no per-game host screen.
 - `helpers/ha_esp_port.c` + `helpers/ha_flasher.c` + `scenes/..._flasher.c` — an on-device
   ESP flasher over the GPIO UART (Espressif `esp-serial-flasher`, Apache-2.0, vendored in
-  `lib/esp-serial-flasher/` trimmed to the ESP32-S2 stub). It borrows the serial line via
+  `lib/esp-serial-flasher/` trimmed to the ESP32-S2 and ESP32 WROOM stubs). It borrows the serial line via
   `ha_uart_suspend`/`resume`, polls for download mode, flashes the SD firmware bundle with
   MD5 verify on a worker thread, and reboots the ESP into the new firmware.
 
