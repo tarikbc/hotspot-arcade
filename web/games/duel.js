@@ -6,6 +6,7 @@
   var prev = null;        // previous board signature, to animate/sound new moves
   var prevPhase = "";
   var prevTurnMine = false;
+  var rematchTimer = null; // pending "did the rematch actually restart?" check
 
   /* ---- Connect 4 / Tic-Tac-Toe: a simple cell grid ---- */
   function renderGrid(m) {
@@ -16,6 +17,14 @@
     var board = $("duel-board");
     board.className = "board" + (m.kind === "ttt" ? " ttt" : "") + (myTurn ? " mine" : "");
     board.style.gridTemplateColumns = "repeat(" + cols + ",1fr)";
+    // Give the grid definite-height rows too. Without them the rows collapse on
+    // mobile Safari (a cell's aspect-ratio doesn't size an auto grid row there) and
+    // pieces from different rows overlap. Tic-Tac-Toe pins this in CSS (.board.ttt);
+    // Connect Four uses the bare .board, so set it here.
+    if (m.kind !== "ttt") {
+      board.style.gridTemplateRows = "repeat(" + rows + ",1fr)";
+      board.style.aspectRatio = cols + " / " + rows;
+    }
 
     var b = m.board || [];
     var pb = (prev && prev.length === n) ? prev : null;
@@ -112,6 +121,8 @@
     var board = $("duel-board");
     board.className = "board rev" + (myTurn ? " mine" : "");
     board.style.gridTemplateColumns = "repeat(8,1fr)";
+    board.style.gridTemplateRows = "repeat(8,1fr)";   // definite rows so the 8x8 board
+    board.style.aspectRatio = "1";                    // can't collapse on mobile (see renderGrid)
 
     var b = m.board || [];
     var pb = (prev && prev.length === n) ? prev : null;
@@ -197,6 +208,9 @@
   A.handlers.duel = function (m) {
     route("duel");
     if (A.view !== "duel") return;   // still on landing; render when joined
+    // Any state that isn't the game-over screen means a pending rematch resolved
+    // (restarted → "playing", or we bailed → "lobby"): stop watching for it.
+    if (rematchTimer && m.phase !== "over") { clearTimeout(rematchTimer); rematchTimer = null; }
     var title = GAME_LABEL[({ c4: "connect4", ttt: "tictactoe", dots: "dots", reversi: "reversi" })[m.kind]] || "Duel";
     $("duel-title").textContent = title;
     if (m.phase === "playing") renderPlaying(m);
@@ -208,6 +222,20 @@
   document.addEventListener("DOMContentLoaded", function () {
     $("duel-leave").addEventListener("click", function () { send({ t: "leaveGame" }); });
     $("duel-back").addEventListener("click", function () { send({ t: "leaveGame" }); });
-    $("duel-rematch").addEventListener("click", function () { A.sfx("buzz"); send({ t: "rematch" }); });
+    $("duel-rematch").addEventListener("click", function () {
+      A.sfx("buzz"); send({ t: "rematch" });
+      // The server restarts instantly when the opponent is still here; if it stays
+      // silent, they left, so don't strand us on the game-over screen — drop back to
+      // the lobby (which A.handlers.duel confirms by clearing this timer on any
+      // non-"over" state). 1.5s is far above the local-AP round trip.
+      if (rematchTimer) clearTimeout(rematchTimer);
+      rematchTimer = setTimeout(function () {
+        rematchTimer = null;
+        if (prevPhase === "over" && A.view === "duel") {
+          toast("Opponent left");
+          send({ t: "leaveGame" });
+        }
+      }, 1500);
+    });
   });
 })();
