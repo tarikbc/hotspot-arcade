@@ -158,7 +158,7 @@ static void ha_lobby_render(HotspotArcadeApp* app) {
         // offer to install it (while auto-detection keeps running in the background).
         ha_status_screen(app, "Firmware needed", "Attach board, install:");
         widget_add_button_element(
-            app->widget, GuiButtonTypeLeft, "Install official", ha_noboard_button_cb, app);
+            app->widget, GuiButtonTypeLeft, "Official", ha_noboard_button_cb, app);
         widget_add_button_element(
             app->widget, GuiButtonTypeRight, "WROOM", ha_noboard_button_cb, app);
         return;
