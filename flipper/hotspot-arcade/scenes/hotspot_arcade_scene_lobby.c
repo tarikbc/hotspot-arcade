@@ -41,8 +41,10 @@ static void ha_lobby_button_cb(GuiButtonType result, InputType type, void* conte
 // "Install firmware" on the no-board prompt (added for the on-device flasher).
 static void ha_noboard_button_cb(GuiButtonType result, InputType type, void* context) {
     HotspotArcadeApp* app = context;
-    if(type == InputTypeShort && result == GuiButtonTypeCenter)
-        view_dispatcher_send_custom_event(app->view_dispatcher, HaEventInstallFirmware);
+    if(type == InputTypeShort && result == GuiButtonTypeLeft)
+        view_dispatcher_send_custom_event(app->view_dispatcher, HaEventInstallOfficialFirmware);
+    if(type == InputTypeShort && result == GuiButtonTypeRight)
+        view_dispatcher_send_custom_event(app->view_dispatcher, HaEventInstallWroomFirmware);
 }
 
 static void ha_status_screen(HotspotArcadeApp* app, const char* l1, const char* l2) {
@@ -156,7 +158,9 @@ static void ha_lobby_render(HotspotArcadeApp* app) {
         // offer to install it (while auto-detection keeps running in the background).
         ha_status_screen(app, "Firmware needed", "Attach board, install:");
         widget_add_button_element(
-            app->widget, GuiButtonTypeCenter, "Install fw", ha_noboard_button_cb, app);
+            app->widget, GuiButtonTypeLeft, "Install official", ha_noboard_button_cb, app);
+        widget_add_button_element(
+            app->widget, GuiButtonTypeRight, "WROOM", ha_noboard_button_cb, app);
         return;
     }
     if(strcmp(s, "outdated") == 0) {
@@ -166,7 +170,9 @@ static void ha_lobby_render(HotspotArcadeApp* app) {
         ha_status_screen(app, "Update firmware?", furi_string_get_cstr(l2));
         furi_string_free(l2);
         widget_add_button_element(
-            app->widget, GuiButtonTypeCenter, "Update fw", ha_noboard_button_cb, app);
+            app->widget, GuiButtonTypeLeft, "Official", ha_noboard_button_cb, app);
+        widget_add_button_element(
+            app->widget, GuiButtonTypeRight, "WROOM", ha_noboard_button_cb, app);
         return;
     }
     if(app->portal_running || app->link_lost) {
@@ -220,11 +226,18 @@ bool hotspot_arcade_scene_lobby_on_event(void* context, SceneManagerEvent event)
         ha_session_start(app); // blocks while the bundle streams
         ha_lobby_render(app);
         return true;
-    case HaEventInstallFirmware:
+    case HaEventInstallOfficialFirmware:
         // Go flash the bundled firmware; on return this scene re-enters, re-detects
         // the now-flashed board, and continues the start. Stop watching while away.
         app->awaiting_board = false;
-        furi_string_set(app->flash_manifest, HA_DEFAULT_FW);
+        furi_string_set(app->flash_manifest, HA_OFFICIAL_FW);
+        scene_manager_next_scene(app->scene_manager, HaSceneFlasher);
+        return true;
+    case HaEventInstallWroomFirmware:
+        // Go flash the bundled firmware; on return this scene re-enters, re-detects
+        // the now-flashed board, and continues the start. Stop watching while away.
+        app->awaiting_board = false;
+        furi_string_set(app->flash_manifest, HA_WROOM_FW);
         scene_manager_next_scene(app->scene_manager, HaSceneFlasher);
         return true;
     case HaEventRefreshView:

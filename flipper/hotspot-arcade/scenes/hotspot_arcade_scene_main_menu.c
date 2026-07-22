@@ -9,7 +9,8 @@ typedef enum {
     MenuConsole,
     MenuStop,
     MenuSsid,
-    MenuFlashFirmware,
+    MenuFlashOfficialFirmware,
+    MenuFlashWroomFirmware,
     MenuSettings,
     MenuAbout,
 } MainMenuIndex;
@@ -47,8 +48,10 @@ static void ha_menu_build(HotspotArcadeApp* app) {
     submenu_add_item(app->submenu, furi_string_get_cstr(label), MenuSsid, ha_menu_cb, app);
     furi_string_free(label);
 
-    if(!app->session_active)
-        submenu_add_item(app->submenu, "Install Firmware", MenuFlashFirmware, ha_menu_cb, app);
+    if(!app->session_active) {
+        submenu_add_item(app->submenu, "Install Official Firmware", MenuFlashOfficialFirmware, ha_menu_cb, app);
+        submenu_add_item(app->submenu, "Install WROOM Firmware", MenuFlashOfficialFirmware, ha_menu_cb, app);
+    }
     submenu_add_item(app->submenu, "Settings", MenuSettings, ha_menu_cb, app);
     submenu_add_item(app->submenu, "About", MenuAbout, ha_menu_cb, app);
 
@@ -103,11 +106,18 @@ bool hotspot_arcade_scene_main_menu_on_event(void* context, SceneManagerEvent ev
     case MenuSsid:
         scene_manager_next_scene(app->scene_manager, HaSceneSsidInput);
         return true;
-    case MenuFlashFirmware:
+    case MenuFlashOfficialFirmware:
         // The firmware ships bundled in the fap (extracted to apps_assets), so just
         // flash the default - no file picker. The flasher polls for download mode;
         // its Continue returns here (previous_scene) since we pushed it.
-        furi_string_set(app->flash_manifest, HA_DEFAULT_FW);
+        furi_string_set(app->flash_manifest, HA_OFFICIAL_FW);
+        scene_manager_next_scene(app->scene_manager, HaSceneFlasher);
+        return true;
+    case MenuFlashWroomFirmware:
+        // The firmware ships bundled in the fap (extracted to apps_assets), so just
+        // flash the default - no file picker. The flasher polls for download mode;
+        // its Continue returns here (previous_scene) since we pushed it.
+        furi_string_set(app->flash_manifest, HA_WROOM_FW);
         scene_manager_next_scene(app->scene_manager, HaSceneFlasher);
         return true;
     case MenuSettings:

@@ -21,6 +21,7 @@ typedef enum {
     HaEventFlashProgress = 112,
     HaEventFlashDone = 113,
     // From the lobby "No board" prompt: install firmware, then continue where headed.
-    HaEventInstallFirmware = 114,
-    HaEventFlashContinue = 115,
+    HaEventInstallOfficialFirmware = 114,
+    HaEventInstallWroomFirmware = 115,
+    HaEventFlashContinue = 116,
 } HaCustomEvent;
