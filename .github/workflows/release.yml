@@ -96,7 +96,7 @@ jobs:
             ## Install
 
             **You only need `hotspot_arcade.fap`.** Drop it in `/ext/apps/GPIO/` on the SD card.
-            The ESP firmware, the phone game bundle, and the trivia packs all ship inside it, so
+            The ESP firmware, the phone game bundle, and the content packs all ship inside it, so
             there is no SD setup and nothing else to download. Flash the board from the app itself
             with **Install Firmware**.
 
