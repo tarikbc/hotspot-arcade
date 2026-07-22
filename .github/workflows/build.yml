@@ -55,7 +55,7 @@ jobs:
             web/dist/manifest.json
 
   esp32-firmware:
-    name: Build ESP32-S2 firmware
+    name: Build ESP32 firmware
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,18 +70,25 @@ jobs:
           arduino-cli config set board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@2.0.17
-      - name: Compile firmware
-        # AsyncTCP + ESPAsyncWebServer are vendored in esp32/libs/.
+      - name: Compile firmware (both boards)
+        # Same sketch, one build per supported board. AsyncTCP + ESPAsyncWebServer are
+        # vendored in esp32/libs/. Output goes to build/<board>/ to match the fap's
+        # assets/firmware/<board>/ layout that the on-device board picker flashes from.
         run: |
           arduino-cli compile \
             --fqbn esp32:esp32:esp32s2:PartitionScheme=huge_app \
             --libraries esp32/libs \
-            --output-dir esp32/hotspot-arcade-fw/build \
+            --output-dir esp32/hotspot-arcade-fw/build/official_devboard \
+            esp32/hotspot-arcade-fw
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32 \
+            --libraries esp32/libs \
+            --output-dir esp32/hotspot-arcade-fw/build/wroom \
             esp32/hotspot-arcade-fw
       - uses: actions/upload-artifact@v4
         with:
           name: hotspot-arcade-firmware
-          path: esp32/hotspot-arcade-fw/build/*.bin
+          path: esp32/hotspot-arcade-fw/build/*/*.bin
 
   bundled-assets:
     # The fap ships the web bundle, trivia packs, and ESP firmware images as committed
