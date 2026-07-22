@@ -324,7 +324,9 @@ h3{margin:0; font-weight:600}
   grid-template-rows:repeat(3,1fr); gap:6px;
 }
 .board.ttt .cell{
-  aspect-ratio:auto;  /* rows are equal fractions; don't fight them with the cell ratio */
+  aspect-ratio:1;  /* the cell drives the square (like Reversi/Connect Four); mobile
+                      Safari doesn't reliably size the board's 1fr rows on its own, which
+                      left the cells wide and short. The glyph still centres via flex. */
   display:flex; align-items:center; justify-content:center;
   font-size:min(24vw,92px); font-weight:700; line-height:1;
 }

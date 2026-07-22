@@ -521,6 +521,8 @@ static void dispatch_frame(HotspotArcadeApp* app) {
            ha_json_str((const char*)p, "draw", ev, sizeof(ev))) {
             furi_string_set_str(app->last_event, ev);
             console_add(app, ev);
+        } else if(ha_json_str((const char*)p, "chat", ev, sizeof(ev))) {
+            console_add(app, ev); // lobby chatter, not a game status line
         }
         break;
     }

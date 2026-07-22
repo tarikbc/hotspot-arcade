@@ -638,6 +638,10 @@ private:
             s += ha_json_escape(_p[pid].avatar);
             s += "\",\"score\":";
             s += _p[pid].score;
+            // In a 1v1 match (playing OR still on the over screen): don't let others
+            // challenge them until they return to the lobby.
+            s += ",\"busy\":";
+            s += inAnyMatch(pid) ? "true" : "false";
             s += "}";
             first = false;
         }
@@ -1143,7 +1147,15 @@ private:
     void duelRematch(uint8_t pid) {
         DuelMatch* m = matchOf(pid);
         if(!m || m->phase != 2) return;
-        if(!m->aIn || !m->bIn) return; // opponent left
+        if(!m->aIn || !m->bIn) {
+            // Opponent has left: there is no one to rematch. Send this player back to
+            // the lobby with a note, rather than silently doing nothing.
+            if(_p[pid].wsId)
+                haWsSendWs(_p[pid].wsId, String("{\"t\":\"toast\",\"msg\":\"Opponent left\"}"));
+            duelOnLeave(pid);
+            pushAll();
+            return;
+        }
         uint8_t next = (m->first == m->a) ? m->b : m->a;
         duelStart(m, m->a, m->b, next);
         pushAll();
@@ -1491,6 +1503,9 @@ private:
         haWsBroadcast(
             String("{\"t\":\"chat\",\"nick\":\"") + ha_json_escape(_p[pid].nick) + "\",\"text\":\"" +
             ha_json_escape(text) + "\"}");
+        // Also surface it on the Flipper console so the host can follow the lobby chat.
+        haUartEvent(String("{\"chat\":\"") + ha_json_escape(_p[pid].nick) + ": " +
+                    ha_json_escape(text) + "\"}");
     }
 
     // Emoji reaction. Goes to whoever shares your screen: your opponent if you are

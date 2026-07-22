@@ -19,12 +19,10 @@
     board.style.gridTemplateColumns = "repeat(" + cols + ",1fr)";
     // Give the grid definite-height rows too. Without them the rows collapse on
     // mobile Safari (a cell's aspect-ratio doesn't size an auto grid row there) and
-    // pieces from different rows overlap. Tic-Tac-Toe pins this in CSS (.board.ttt);
-    // Connect Four uses the bare .board, so set it here.
-    if (m.kind !== "ttt") {
-      board.style.gridTemplateRows = "repeat(" + rows + ",1fr)";
-      board.style.aspectRatio = cols + " / " + rows;
-    }
+    // pieces from different rows overlap (or, for Tic-Tac-Toe, the cells go wide and
+    // short). Both Connect Four and Tic-Tac-Toe use this grid renderer.
+    board.style.gridTemplateRows = "repeat(" + rows + ",1fr)";
+    board.style.aspectRatio = cols + " / " + rows;
 
     var b = m.board || [];
     var pb = (prev && prev.length === n) ? prev : null;

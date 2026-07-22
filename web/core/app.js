@@ -414,7 +414,9 @@ function lobbyView(incEl, listEl, challenges) {
   });
 
   var iChallenged = challenges.some(function (c) { return c.from === A.pid; });
-  var others = (A.players || []).filter(function (p) { return p.pid !== A.pid; });
+  // Exclude yourself and anyone currently in a 1v1 match (playing or still on their
+  // over screen) — they can't be challenged until they come back to the lobby.
+  var others = (A.players || []).filter(function (p) { return p.pid !== A.pid && !p.busy; });
   listEl.innerHTML = "";
   if (!others.length) {
     var empty = document.createElement("li");
@@ -565,7 +567,7 @@ function saveIdEdit() {
 }
 
 // ---- emoji reactions (float up, in any screen) --------------------------
-var REACTS = ["👍", "😂", "🔥", "😮", "🎉", "❤️"];
+var REACTS = ["👍", "😂", "🔥", "😮", "🎉", "❤️", "😠"];
 function buildReactBar() {
   var row = $("react-row");
   if (!row) return;
