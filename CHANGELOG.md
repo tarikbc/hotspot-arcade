@@ -6,6 +6,32 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-22
+
+Post-1.0 fixes from on-device testing. Firmware **v11** (no protocol change).
+
+### Added
+
+- An angry reaction emoji (😠).
+- Lobby chat now appears on the Flipper's Console, so the host can follow the chatter.
+
+### Fixed
+
+- **Tic-Tac-Toe** stays a proper square on mobile Safari instead of stretching wide —
+  the cell drives the square (like Reversi/Connect Four) rather than relying on the
+  board's grid rows, which WebKit didn't size reliably.
+- **Rematch after your opponent leaves** now returns you to the lobby with an "Opponent
+  left" toast, handled in the engine (the earlier client-side timeout was unreliable on
+  hardware).
+- **You can no longer challenge someone still on their win/lose screen.** Players in a
+  1v1 match are marked busy and hidden from the challenge list until they return to the
+  lobby.
+
+### Removed
+
+- The Flipper dashboard's redundant **Feed** screen. Games are player-driven and the
+  main-menu **Console** already shows the full live event log.
+
 ## [1.0.0] - 2026-07-22
 
 First stable release. Firmware **v11**.
@@ -190,7 +216,8 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.0...v0.2.1
