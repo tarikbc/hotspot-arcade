@@ -286,4 +286,27 @@
 
 <div id="toast" class="toast hide"></div>
 
+<!-- Captive-browser handoff. iOS/Android open a Wi-Fi "captive" mini-browser that
+     can't hold a WebSocket, so the game just loops on "Reconnecting...". When we
+     detect that (only outside the real browser), this overlay tells the player how
+     to move to their full browser, with the address as a copiable field (a link
+     button can't hand off out of the captive window, so we don't pretend it can). -->
+<div id="captive" class="captive hide" role="dialog" aria-modal="true" aria-labelledby="captive-title">
+  <div class="captive-card">
+    <div id="captive-title" class="captive-title">Open in your browser</div>
+    <p class="captive-body">This Wi-Fi popup can&rsquo;t keep the game connected. To play,
+       leave it and open the game in your phone&rsquo;s browser:</p>
+    <ol class="captive-steps">
+      <li>Tap <b>Cancel</b>, then <b>Use Without Internet</b></li>
+      <li>Open your browser and go to this address:</li>
+    </ol>
+    <div class="captive-copy">
+      <input id="captive-url" class="captive-url" readonly value="192.168.4.1"
+             aria-label="Game address" spellcheck="false">
+      <button id="captive-copy" class="btn sm" type="button">Copy</button>
+    </div>
+    <button id="captive-dismiss" class="captive-dismiss" type="button">Dismiss</button>
+  </div>
+</div>
+
 <script>/*__JS__*/</script>

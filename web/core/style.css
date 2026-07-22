@@ -396,6 +396,32 @@ h3{margin:0; font-weight:600}
   border-radius:var(--radius); padding:12px 16px; font-size:13px;
 }
 
+/* Captive-browser handoff overlay (see #captive in index.html). Sits above
+   everything, including the identity sheet, because it blocks a game that can't
+   actually connect in the Wi-Fi popup. */
+.captive{position:fixed; inset:0; z-index:70; display:flex; align-items:center;
+  justify-content:center; background:rgba(0,0,0,.82);
+  padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom))}
+.captive.hide{display:none}
+.captive-card{width:100%; max-width:420px; background:var(--surface);
+  border:2px solid var(--line); border-top:3px solid var(--orange);
+  border-radius:var(--radius); padding:22px}
+.captive-title{font-size:20px; font-weight:700; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--orange); margin-bottom:12px}
+.captive-body{font-size:14px; color:var(--text); line-height:1.5; margin:0 0 14px}
+.captive-steps{margin:0 0 16px; padding-left:20px; color:var(--text-dim);
+  font-size:14px; line-height:1.65}
+.captive-steps b{color:var(--text)}
+.captive-copy{display:flex; gap:8px; margin-bottom:12px}
+.captive-url{flex:1; min-width:0; font-family:var(--font); font-size:17px;
+  color:var(--text); background:var(--bg); border:2px solid var(--line);
+  border-radius:var(--radius); padding:12px 14px; text-align:center;
+  letter-spacing:.02em; -webkit-user-select:all; user-select:all}
+.captive-copy .btn{flex:0 0 auto; align-self:stretch; padding-left:16px; padding-right:16px}
+.captive-dismiss{display:block; width:100%; background:none; border:0;
+  color:var(--text-mute); font-family:var(--font); font-size:13px;
+  text-transform:uppercase; letter-spacing:.08em; padding:6px; cursor:pointer}
+
 /* Avatar picker (landing) */
 .avatars{display:grid; grid-template-columns:repeat(8,1fr); gap:6px}
 .av-pick{

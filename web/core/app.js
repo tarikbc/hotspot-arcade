@@ -333,7 +333,26 @@ function scheduleReconnect() {
   }
   var wait = Math.min(1000 * Math.pow(1.6, A.retry), 8000);
   A.retry++;
+  maybeCaptive();
   setTimeout(connect, wait);
+}
+
+/* Captive-browser handoff. iOS/Android open a Wi-Fi "captive" mini-browser that
+   can't hold a WebSocket, so the socket just loops on reconnect. We only surface
+   the handoff overlay when we're NOT already in the real browser: in the mini
+   browser the page host is a probe domain (captive.apple.com, connectivitycheck…),
+   while a real browser is at the AP's 192.168.4.1. Never fires under the simulator
+   harness (its socket connects fine). */
+var captiveSnoozeUntil = 0;   // don't re-show until A.retry passes this (after a dismiss)
+function captiveEligible() {
+  if (new URLSearchParams(location.search).has("harness")) return false;
+  var h = location.hostname;
+  return !!h && h !== "192.168.4.1";
+}
+function maybeCaptive() {
+  // A couple of failed reconnects in a captive context means the socket won't hold.
+  if (!captiveEligible() || A.retry < 2 || A.retry < captiveSnoozeUntil) return;
+  show("captive");
 }
 
 /* Core message routing. Game-specific messages hand off to registered
@@ -627,6 +646,28 @@ function initApp() {
   $("play").addEventListener("click", startPlay);
   $("nick").addEventListener("keydown", function (e) {
     if (e.key === "Enter") startPlay();
+  });
+
+  // Captive handoff overlay: copy the address (execCommand works on the captive
+  // http page where the async clipboard API is blocked), or dismiss to peek at the
+  // lobby — it reappears if the socket keeps dropping.
+  $("captive-copy").addEventListener("click", function () {
+    var inp = $("captive-url");
+    inp.focus(); inp.select();
+    try { inp.setSelectionRange(0, inp.value.length); } catch (e) {}
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) {}
+    if (!ok && navigator.clipboard) {
+      try { navigator.clipboard.writeText(inp.value); ok = true; } catch (e) {}
+    }
+    var btn = $("captive-copy"), was = btn.getAttribute("data-label") || btn.textContent;
+    btn.setAttribute("data-label", was);
+    btn.textContent = ok ? "Copied!" : "Select & copy";
+    setTimeout(function () { btn.textContent = was; }, 1600);
+  });
+  $("captive-dismiss").addEventListener("click", function () {
+    hide("captive");
+    captiveSnoozeUntil = A.retry + 4;   // re-show only if it keeps dropping
   });
 
   // Lobby chat: emit {t:"say"}; the server broadcasts it back as {t:"chat"}.
