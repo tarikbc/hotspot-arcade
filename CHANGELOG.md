@@ -6,6 +6,51 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-22
+
+First stable release. Firmware **v11**.
+
+### Added
+
+- **Local browser simulator** (`sim/`): the real ESP game engine compiled to WebAssembly
+  and driven by 2-8 phone panels (each an iframe of the real phone client) plus a
+  data-faithful Flipper panel, so every game is playable and testable with no hardware. A
+  CI job compiles the engine so the WASM shim can't rot silently.
+- **Generic content packs for four games.** Trivia, Would You Rather, Word Scramble, and
+  Draw & Guess all play from plain-text `packs/<game>/*.txt` files. The Flipper is now a
+  dumb pipe that no longer parses game content, so adding a content-driven game is a pack
+  file plus one engine loader. The party games share a pack-vote strip in the lobby.
+- **More content**: six packs per game now ship inside the .fap (14 new packs spanning
+  geography/music/games trivia, superpowers/time & space/absurd Would You Rather,
+  food/space/music/sports scramble, and food/nature/animals/fantasy draw).
+- **Change your nickname and avatar mid-game** from the header identity chip.
+- **Captive-browser handoff.** When a phone opens the game inside the iOS/Android Wi-Fi
+  popup (where WebSockets can't hold a connection), an overlay guides the player to their
+  real browser with a copiable `192.168.4.1` address.
+
+### Changed
+
+- **Reactions are scoped** to the people sharing your screen and now show the sender's name.
+- **Countdowns start from 3** across the party games, with a vote-and-reveal countdown bar
+  in Would You Rather.
+- Firmware advanced **v7 -> v11** over this release (scoped reactions, generic content
+  ingest, themed packs, and the 3-second countdowns each bumped it).
+- README and docs: looping gameplay GIFs, regenerated screenshots, and pack documentation
+  that covers all four content games instead of trivia alone.
+
+### Fixed
+
+- **Reversi and Connect Four no longer collapse on mobile Safari.** The boards set explicit
+  grid rows instead of relying on cell aspect-ratio, which WebKit sized to near-zero so
+  discs and pieces from different rows overlapped.
+- **Tic-Tac-Toe** no longer renders a squashed, cut-off board; marks are proper crosses and
+  circles, optically centred.
+- **Rematch** after your opponent has left now returns you to the lobby instead of doing
+  nothing.
+- **Would You Rather** lets you vote again after a skipped round, and no longer serves a
+  stale prompt pack after a re-clear with no replacement.
+- The **Pong** ball now actually makes contact with the paddle.
+
 ## [0.3.0] - 2026-07-21
 
 Install is now a single file. Firmware **v7**.
@@ -145,7 +190,8 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/tarikbc/hotspot-arcade/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.1.0...v0.2.0
