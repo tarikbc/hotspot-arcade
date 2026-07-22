@@ -72,8 +72,14 @@ ready-up lobby, countdown, and the collapsible live leaderboard:
   <img src="docs/img/web-wyr.png" alt="Would You Rather: A/B poll with the live vote split" width="19%">
   <img src="docs/img/web-scramble.png" alt="Word Scramble: unscramble the letters and type the word" width="19%">
   <img src="docs/img/web-react.png" alt="Reaction Duel: fastest finger with reaction time and leaderboard" width="19%">
-  <img src="docs/img/web-draw.png" alt="Draw &amp; Guess: shared canvas with a live guess chat" width="19%">
   <img src="docs/img/web-pong.png" alt="Pong: real-time 1v1 rally with on-screen paddles" width="19%">
+</p>
+
+Draw &amp; Guess relays the drawer's strokes to every guesser's canvas in real time — the
+drawer's side (with the secret word) beside a guesser's side (blanks plus the live guess chat):
+
+<p align="center">
+  <img src="docs/img/web-draw.png" alt="Draw &amp; Guess: the drawer's view showing the secret word beside a guesser's view with blanks and the live guess chat" width="46%">
 </p>
 
 The 1v1 board duels (Connect Four, Tic-Tac-Toe, Dots &amp; Boxes, Reversi):
