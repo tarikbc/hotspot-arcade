@@ -114,7 +114,7 @@ Every game is phone-driven, so the Flipper just selects the game and watches the
 - The captive page hands off to the game web app at `http://192.168.4.1` (captive
   mini-browsers are too limited for WebSockets, so it is a "tap to open in your browser"
   handoff).
-- The Flipper streams the (gzipped) web bundle and trivia content to the ESP over a
+- The Flipper streams the (gzipped) web bundle and content packs to the ESP over a
   framed UART protocol, then orchestrates rounds. Real-time game traffic stays on the
   ESP and never crosses the slow UART. Protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
@@ -123,7 +123,7 @@ Every game is phone-driven, so the Flipper just selects the game and watches the
 **You only need `hotspot_arcade.fap`.** Grab it from the
 [latest release](https://github.com/tarikbc/hotspot-arcade/releases/latest) and drop it in
 `/ext/apps/GPIO/` on the SD card (qFlipper, or the Flipper's own file manager). No SD
-setup, no separate downloads: the ESP firmware, the phone game bundle, and the trivia
+setup, no separate downloads: the ESP firmware, the phone game bundle, and the content
 packs all ship inside the .fap.
 
 > **First launch takes a few seconds.** The .fap carries ~850 KB of bundled content and
@@ -147,7 +147,7 @@ Prefer a computer? `firmware-merged.bin` on the release flashes at `0x0` with es
 
 ### Custom content
 
-The bundled web bundle and trivia packs live in `/ext/apps_assets/hotspot_arcade/`, which
+The bundled web bundle and content packs live in `/ext/apps_assets/hotspot_arcade/`, which
 the loader rewrites from the .fap on every launch. To add your own, use
 `/ext/apps_data/hotspot_arcade/` instead, which is never touched:
 
@@ -171,13 +171,13 @@ arduino-cli compile --fqbn esp32:esp32:esp32s2:PartitionScheme=huge_app \
 ```
 
 **3. Flipper app** — use the wrapper, not bare `ufbt`: it refreshes the bundled firmware
-images, web bundle, and trivia packs inside `assets/` before packaging.
+images, web bundle, and content packs inside `assets/` before packaging.
 ```sh
 tools/build-fap.sh                         # -> dist/hotspot_arcade.fap
 python3 tools/deploy-to-flipper.py --port /dev/cu.usbmodemflip_XXXX
 ```
 The deploy script pushes the fap to `/ext/apps/GPIO/` and your working copies of the web
-bundle and trivia packs to `/ext/apps_data/hotspot_arcade/`, where they override the
+bundle and content packs to `/ext/apps_data/hotspot_arcade/`, where they override the
 bundled ones — so you can iterate on the web client without rebuilding the fap.
 
 ## Development
@@ -204,7 +204,7 @@ with the firmware, in [sim/README.md](sim/README.md).
 
 On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
 
-1. **Set the SSID** (optional). Trivia packs are picked up automatically.
+1. **Set the SSID** (optional). Content packs are picked up automatically.
 2. **Start Session** — the ESP brings up the AP; the dashboard shows **Broadcasting**.
 3. People **join the WiFi** and open `192.168.4.1`, pick a nickname, and land in the lobby.
 4. **Games** → pick a game. Everything is player-driven from the phones: the whole-group
@@ -213,12 +213,14 @@ On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
    **Pong** organize themselves too. The dashboard **Feed** watches events.
 5. **Leaderboard** shows live scores; **Console** shows the raw event log.
 
-## Trivia packs
+## Content packs
 
-Plain-text files, one directory per game under `packs/` (`Key: value` lines, blocks split
-by `---` or a blank line, `Pack:` names the pack). Trivia's keys are `Q:`, `A:`-`D:` and
-`Answer:`. Three packs ship inside the .fap; drop your own into
-`/ext/apps_data/hotspot_arcade/packs/trivia/` to add to them. See
+Four games are content-driven from plain-text files under `packs/`, one directory per
+game (`trivia/`, `wyr/`, `scramble/`, `draw/`). Format: `Key: value` lines, blocks split
+by `---` or a blank line, `Pack:` names the pack. The keys are per game — Trivia uses
+`Q:`, `A:`-`D:` and `Answer:`; Would You Rather uses `A:` / `B:`; Word Scramble and
+Draw &amp; Guess use `Word:`. Six packs per game ship inside the .fap; drop your own into
+`/ext/apps_data/hotspot_arcade/packs/<game>/` to add to them (yours win a name clash). See
 [packs/README.md](packs/README.md).
 
 ## Responsible use
@@ -236,7 +238,7 @@ flipper/hotspot-arcade/   Flipper app (C, ufbt/Momentum) — host + scoreboard
 esp32/hotspot-arcade-fw/  ESP32-S2 firmware (Arduino) — AP + web + WebSocket referee
 esp32/libs/               vendored AsyncTCP + ESPAsyncWebServer
 web/                      phone game client (vanilla JS, gzipped bundle)
-packs/                    content packs, one dir per game (trivia today)
+packs/                    content packs, one dir per game (trivia, wyr, scramble, draw)
 sim/                      browser simulator — real engine compiled to WASM, no hardware
 tools/deploy-to-flipper.py
 docs/                     ARCHITECTURE.md, PROTOCOL.md
