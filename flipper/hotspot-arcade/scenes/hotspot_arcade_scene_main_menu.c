@@ -50,7 +50,7 @@ static void ha_menu_build(HotspotArcadeApp* app) {
 
     if(!app->session_active) {
         submenu_add_item(app->submenu, "Install Official Firmware", MenuFlashOfficialFirmware, ha_menu_cb, app);
-        submenu_add_item(app->submenu, "Install WROOM Firmware", MenuFlashOfficialFirmware, ha_menu_cb, app);
+        submenu_add_item(app->submenu, "Install WROOM Firmware", MenuFlashWroomFirmware, ha_menu_cb, app);
     }
     submenu_add_item(app->submenu, "Settings", MenuSettings, ha_menu_cb, app);
     submenu_add_item(app->submenu, "About", MenuAbout, ha_menu_cb, app);
