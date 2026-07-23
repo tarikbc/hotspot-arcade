@@ -15,7 +15,7 @@
 
 - Four games are now driven by plain-text content packs: Trivia, Would You Rather,
   Word Scramble, and Draw & Guess. Six packs per game ship inside the app, and your own
-  packs in /ext/apps_data/hotspot_arcade/packs/<game>/ still take precedence.
+  packs in the per-game folders under /ext/apps_data/hotspot_arcade/packs/ still take precedence.
 - New angry reaction emoji. Reactions are scoped to the people sharing your screen and
   now show who sent them.
 - Lobby chat appears on the Flipper's Console, so the host can follow the chatter.
