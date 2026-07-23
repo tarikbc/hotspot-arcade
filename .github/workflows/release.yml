@@ -72,8 +72,15 @@ jobs:
             0xe000  "$BOOT_APP0" \
             0x10000 "$WBUILD/hotspot-arcade-fw.ino.bin"
           # And the ESP32-C5. It needs a 3.x core (the chip does not exist in 2.0.17),
-          # so it gets its own core install, its own boot_app0, and its own esptool —
-          # and note the bootloader goes at 0x2000 on this chip, not 0x1000.
+          # so it gets its own core install, its own boot_app0, and its own bootloader
+          # offset (0x2000 on this chip, not 0x1000).
+          #
+          # NOTE: installing the 3.x core *replaces* esp32@2.0.17 and uninstalls its
+          # esptool 4.5.1 (the one $ESPTOOL above points at), so we can no longer reuse
+          # $ESPTOOL here. Rather than re-resolve a moving esptool, merge the images
+          # ourselves: raw merge_bin is just each image placed at its flash offset with
+          # 0xFF fill between them (verified byte-identical to esptool's output). This is
+          # why the S2/WROOM merges run *before* this core install.
           arduino-cli core install esp32:esp32@3.3.11
           CBUILD=esp32/hotspot-arcade-fw/build-c5
           C5_CORE="$HOME/.arduino15/packages/esp32/hardware/esp32/3.3.11"
@@ -83,11 +90,26 @@ jobs:
             --libraries esp32/libs \
             --output-dir "$CBUILD" \
             esp32/hotspot-arcade-fw
-          $ESPTOOL --chip esp32c5 merge_bin -o "$CBUILD/c5-merged.bin" \
+          python3 - "$CBUILD/c5-merged.bin" \
             0x2000  "$CBUILD/hotspot-arcade-fw.ino.bootloader.bin" \
             0x8000  "$CBUILD/hotspot-arcade-fw.ino.partitions.bin" \
             0xe000  "$C5_BOOT_APP0" \
-            0x10000 "$CBUILD/hotspot-arcade-fw.ino.bin"
+            0x10000 "$CBUILD/hotspot-arcade-fw.ino.bin" <<'PY'
+          import sys
+          out, pairs = sys.argv[1], sys.argv[2:]
+          segs = []
+          for i in range(0, len(pairs), 2):
+              off = int(pairs[i], 0)
+              with open(pairs[i + 1], 'rb') as f:
+                  segs.append((off, f.read()))
+          size = max(off + len(data) for off, data in segs)
+          img = bytearray(b'\xff' * size)
+          for off, data in segs:
+              img[off:off + len(data)] = data
+          with open(out, 'wb') as f:
+              f.write(img)
+          print("merged", out, len(img), "bytes")
+          PY
 
       - uses: actions/setup-node@v4
         with:
