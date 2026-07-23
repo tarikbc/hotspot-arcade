@@ -3,6 +3,10 @@
 - Flash more than one ESP board: "Install Firmware" now opens a board picker for the
   official Flipper WiFi Dev Board (ESP32-S2) or an ESP32 WROOM board. Each board's firmware
   is bundled, so it stays an offline, no-computer flash.
+- One-click flashing: each board also has an "(auto boot)" option that drops the board into
+  download mode on its own (no holding BOOT and tapping RESET). The manual option stays for
+  boards wired differently. Thanks to xMasterX for this and the flasher fixes.
+- The flasher no longer freezes if you press Back while it is waiting for the board.
 - Note: the first launch (and each update) can take up to 2 minutes while the app unpacks
   its bundled firmware and game files to the SD card. The hourglass is the loader working.
 - Firmware v11.

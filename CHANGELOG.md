@@ -6,6 +6,24 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-22
+
+On-device flashing improvements from @xMasterX, who tested on an ESP32 WROOM board.
+Firmware **v11** (no protocol change).
+
+### Added
+
+- **One-click flashing.** The board picker now offers an "(auto boot)" row for each board
+  that pulses the DTR/RTS reset lines (and power-cycles over OTG) to drop the board into
+  download mode on its own — so a board with no reset button flashes in a single tap. The
+  manual "hold BOOT, tap RESET" rows stay as the fallback for boards wired differently.
+
+### Fixed
+
+- Pressing Back in the flasher no longer freezes the UI. A cancel flag is threaded into the
+  loader's blocking waits (chunked to 50 ms) so the scene's exit unwinds promptly instead of
+  sitting through a multi-second library timeout.
+
 ## [1.1.0] - 2026-07-22
 
 Multi-board support. Firmware **v11** (no protocol change).
@@ -238,7 +256,8 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/tarikbc/hotspot-arcade/compare/v0.3.0...v1.0.0
