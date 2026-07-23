@@ -64,13 +64,17 @@ jobs:
           mkdir -p "$HOME/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
           echo "$HOME/bin" >> "$GITHUB_PATH"
-      - name: Install esp32 core
+      - name: Install esp32 cores
+        # Two cores on purpose: the S2/WROOM images stay pinned to 2.0.17, and the C5
+        # only exists in the 3.x line, so it builds against that instead of moving the
+        # working boards onto a core with different WiFi/USB behaviour.
         run: |
           arduino-cli config init --overwrite
           arduino-cli config set board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@2.0.17
-      - name: Compile firmware (both boards)
+          arduino-cli core install esp32:esp32@3.3.11
+      - name: Compile firmware (all boards)
         # Same sketch, one build per supported board. AsyncTCP + ESPAsyncWebServer are
         # vendored in esp32/libs/. Output goes to build/<board>/ to match the fap's
         # assets/firmware/<board>/ layout that the on-device board picker flashes from.
@@ -85,6 +89,25 @@ jobs:
             --libraries esp32/libs \
             --output-dir esp32/hotspot-arcade-fw/build/wroom \
             esp32/hotspot-arcade-fw
+          # CDCOnBoot stays disabled so Serial is UART0 — the pins the Flipper uses.
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32c5:PartitionScheme=huge_app,CDCOnBoot=default \
+            --libraries esp32/libs \
+            --output-dir esp32/hotspot-arcade-fw/build/c5 \
+            esp32/hotspot-arcade-fw
+      - name: Rename images to their flashed names
+        # The Flipper shows the filename while flashing and the arduino names are far
+        # wider than the screen, so the artifacts carry the same short names the app
+        # flashes (see each board's flash_*.txt).
+        run: |
+          set -eu
+          for dir in esp32/hotspot-arcade-fw/build/*/; do
+            board="$(basename "$dir")"
+            case "$board" in official_devboard) tag=s2 ;; *) tag="$board" ;; esac
+            mv "$dir/hotspot-arcade-fw.ino.bootloader.bin" "$dir/ha-boot-$tag.bin"
+            mv "$dir/hotspot-arcade-fw.ino.partitions.bin" "$dir/ha-part-$tag.bin"
+            mv "$dir/hotspot-arcade-fw.ino.bin"            "$dir/ha-fw-$tag.bin"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: hotspot-arcade-firmware
