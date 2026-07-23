@@ -144,7 +144,7 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           body: |
-            Offline multiplayer party games hosted from a Flipper Zero + ESP32-S2 dev board.
+            Offline multiplayer party games hosted from a Flipper Zero + an ESP32 WiFi board (S2, WROOM, or C5).
 
             ## Install
 
