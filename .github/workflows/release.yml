@@ -1,8 +1,8 @@
 name: release
 
 # Push a version tag (e.g. v0.1.0) to build all three parts and publish a
-# GitHub Release with the Flipper fap, the web bundle, and the ESP32-S2
-# firmware images attached.
+# GitHub Release with the Flipper fap, the web bundle, and the ESP32
+# firmware images (S2, WROOM, C5) attached.
 on:
   push:
     tags: ["v*"]
@@ -21,7 +21,7 @@ jobs:
       # for the core's esptool elf2image step). A setup-python before this would
       # shadow it and break esptool with "No module named 'serial'".
       # AsyncTCP + ESPAsyncWebServer are vendored in esp32/libs/.
-      - name: Build ESP32 firmware (both boards)
+      - name: Build ESP32 firmware (all boards)
         run: |
           mkdir -p "$HOME/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
@@ -71,6 +71,23 @@ jobs:
             0x8000  "$WBUILD/hotspot-arcade-fw.ino.partitions.bin" \
             0xe000  "$BOOT_APP0" \
             0x10000 "$WBUILD/hotspot-arcade-fw.ino.bin"
+          # And the ESP32-C5. It needs a 3.x core (the chip does not exist in 2.0.17),
+          # so it gets its own core install, its own boot_app0, and its own esptool —
+          # and note the bootloader goes at 0x2000 on this chip, not 0x1000.
+          arduino-cli core install esp32:esp32@3.3.11
+          CBUILD=esp32/hotspot-arcade-fw/build-c5
+          C5_CORE="$HOME/.arduino15/packages/esp32/hardware/esp32/3.3.11"
+          C5_BOOT_APP0="$C5_CORE/tools/partitions/boot_app0.bin"
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32c5:PartitionScheme=huge_app,CDCOnBoot=default \
+            --libraries esp32/libs \
+            --output-dir "$CBUILD" \
+            esp32/hotspot-arcade-fw
+          $ESPTOOL --chip esp32c5 merge_bin -o "$CBUILD/c5-merged.bin" \
+            0x2000  "$CBUILD/hotspot-arcade-fw.ino.bootloader.bin" \
+            0x8000  "$CBUILD/hotspot-arcade-fw.ino.partitions.bin" \
+            0xe000  "$C5_BOOT_APP0" \
+            0x10000 "$CBUILD/hotspot-arcade-fw.ino.bin"
 
       - uses: actions/setup-node@v4
         with:
@@ -126,6 +143,7 @@ jobs:
             - `firmware-merged.bin`: the ESP32-S2 firmware as a single image, if you'd rather flash
               that board from a computer (optional — the fap already carries it).
             - `wroom-merged.bin`: the same, for an ESP32 WROOM board (optional — the fap carries it too).
+            - `c5-merged.bin`: the same, for an ESP32-C5 board.
             - `web-bundle.zip`: the phone game bundle on its own, for overriding the bundled client
               from `/ext/apps_data/hotspot_arcade/web/` (optional).
 
@@ -144,9 +162,14 @@ jobs:
 
             ```sh
             esptool.py --chip esp32 --before default_reset --after hard_reset write_flash 0x0 wroom-merged.bin
+
+            ESP32-C5:
+
+            esptool.py --chip esp32c5 --before default_reset --after hard_reset write_flash 0x0 c5-merged.bin
             ```
           files: |
             flipper/hotspot-arcade/dist/hotspot_arcade.fap
             web/web-bundle.zip
             esp32/hotspot-arcade-fw/build/firmware-merged.bin
             esp32/hotspot-arcade-fw/build-wroom/wroom-merged.bin
+            esp32/hotspot-arcade-fw/build-c5/c5-merged.bin

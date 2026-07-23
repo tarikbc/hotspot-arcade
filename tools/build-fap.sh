@@ -25,14 +25,31 @@ ASSETS_WEB="$REPO/flipper/hotspot-arcade/assets/web"
 ASSETS_PACKS="$REPO/flipper/hotspot-arcade/assets/packs"
 WEB_DIST="$REPO/web/dist"
 CORE_VER="2.0.17"
+# The ESP32-C5 is not in the 2.x cores at all, so it builds against a 3.x one.
+CORE_VER_C5="${CORE_VER_C5:-3.3.11}"
 
-# Boards to build, "<fqbn>|<assets subdir>". Both build from the same sketch; the fap
-# bundles one image set per board and the on-device board picker chooses which to flash.
-# Adding a board is one more line here (+ its flash_*.txt and a picker row).
+# Boards to build, "<fqbn>|<assets subdir>[|<core version>]". All build from the same
+# sketch; the fap bundles one image set per board and the on-device board picker chooses
+# which to flash. Adding a board is one more line here (+ its flash_*.txt and a picker row).
+#
+# The core version is optional and defaults to CORE_VER. The C5 needs it: that chip only
+# exists in the 3.x cores, while the S2/WROOM images stay on the pinned 2.0.17 so this
+# doesn't quietly re-cut them on a core with different WiFi/USB behaviour.
 BOARDS=(
     "esp32:esp32:esp32s2:PartitionScheme=huge_app|official_devboard"
     "esp32:esp32:esp32|wroom"
+    "esp32:esp32:esp32c5:PartitionScheme=huge_app,CDCOnBoot=default|c5|$CORE_VER_C5"
 )
+
+# Short tag used in the flashed filenames, per assets subdir. The Flipper shows the
+# filename while flashing, and "hotspot-arcade-fw.ino.bootloader.bin" is far wider
+# than the screen, so the images are renamed on the way into assets/firmware/.
+board_tag() {
+    case "$1" in
+        official_devboard) echo "s2" ;;
+        *)                 echo "$1" ;;
+    esac
+}
 
 # The three arduino-built images (boot_app0.bin comes from the core, not the build).
 IMAGES=(
@@ -40,6 +57,18 @@ IMAGES=(
     "hotspot-arcade-fw.ino.partitions.bin"
     "hotspot-arcade-fw.ino.bin"
 )
+
+# Build name -> flashed name. Keep in step with each board's flash_*.txt.
+flashed_name() {
+    local img="$1" tag="$2"
+    case "$img" in
+        *.ino.bootloader.bin) echo "ha-boot-$tag.bin" ;;
+        *.ino.partitions.bin) echo "ha-part-$tag.bin" ;;
+        boot_app0.bin)        echo "ha-app0-$tag.bin" ;;
+        *.ino.bin)            echo "ha-fw-$tag.bin" ;;
+        *)                    echo "$img" ;;
+    esac
+}
 
 # --- locate arduino-cli (not on PATH by default) ---
 ACLI="${ACLI:-}"
@@ -59,7 +88,8 @@ fi
 
 # --- locate the core's boot_app0.bin (only needed when actually building) ---
 find_boot_app0() {
-    local rel="packages/esp32/hardware/esp32/$CORE_VER/tools/partitions/boot_app0.bin"
+    local ver="${1:-$CORE_VER}"
+    local rel="packages/esp32/hardware/esp32/$ver/tools/partitions/boot_app0.bin"
     local roots=()
     [ -n "${ARDUINO_DIRECTORIES_DATA:-}" ] && roots+=("$ARDUINO_DIRECTORIES_DATA")
     roots+=("$HOME/Library/Arduino15" "$HOME/.arduino15")
@@ -68,23 +98,25 @@ find_boot_app0() {
     done
     return 1
 }
-BOOT_APP0=""
-if [ -n "$ACLI" ]; then
-    BOOT_APP0="$(find_boot_app0 || true)"
-    if [ -z "$BOOT_APP0" ]; then
-        echo "ERROR: could not find boot_app0.bin for the esp32 $CORE_VER core." >&2
-        echo "       set ARDUINO_DIRECTORIES_DATA to the arduino data dir." >&2
-        exit 1
-    fi
-fi
+# boot_app0 is resolved per board below, since they can build against different cores.
 
 # --- build each board and populate assets/firmware/<subdir>/ ---
 # flash_official.txt / flash_wroom.txt are committed as the source of truth; only the
 # .bin images (and boot_app0) are (re)generated here.
 for entry in "${BOARDS[@]}"; do
-    fqbn="${entry%%|*}"
-    subdir="${entry##*|}"
+    IFS='|' read -r fqbn subdir board_core <<< "$entry"
+    board_core="${board_core:-$CORE_VER}"
     out="$ASSETS_FW/$subdir"
+    BOOT_APP0=""
+    if [ -n "$ACLI" ]; then
+        BOOT_APP0="$(find_boot_app0 "$board_core" || true)"
+        if [ -z "$BOOT_APP0" ]; then
+            echo "ERROR: could not find boot_app0.bin for the esp32 $board_core core." >&2
+            echo "       install it (arduino-cli core install esp32:esp32@$board_core)" >&2
+            echo "       or set ARDUINO_DIRECTORIES_DATA to the arduino data dir." >&2
+            exit 1
+        fi
+    fi
     if [ -n "$ACLI" ]; then
         build="$ESP_BUILD/$subdir"
         echo "==> Building $subdir firmware ($fqbn)"
@@ -96,19 +128,31 @@ for entry in "${BOARDS[@]}"; do
         echo "==> arduino-cli not found; keeping the committed $subdir images"
         build="$out"
     fi
-    for img in "${IMAGES[@]}"; do
-        if [ ! -f "$build/$img" ]; then
-            echo "ERROR: missing $subdir ESP image $build/$img" >&2
-            echo "       build the ESP firmware first (see CLAUDE.md) or install arduino-cli." >&2
-            exit 1
-        fi
-    done
-    mkdir -p "$out"
-    # In the arduino-cli fallback build == out (the committed images are already here),
-    # so skip the self-copy — `cp X X` errors under `set -e`.
-    if [ "$build" != "$out" ]; then
-        for img in "${IMAGES[@]}"; do cp "$build/$img" "$out/$img"; done
-        [ -n "$BOOT_APP0" ] && cp "$BOOT_APP0" "$out/boot_app0.bin"
+    tag="$(board_tag "$subdir")"
+    if [ -n "$ACLI" ]; then
+        # Fresh build: the images are still arduino-named in $build, and get their
+        # short flashed names as they are copied into assets/firmware/<subdir>/.
+        for img in "${IMAGES[@]}"; do
+            if [ ! -f "$build/$img" ]; then
+                echo "ERROR: missing $subdir ESP image $build/$img" >&2
+                exit 1
+            fi
+        done
+        mkdir -p "$out"
+        for img in "${IMAGES[@]}"; do
+            cp "$build/$img" "$out/$(flashed_name "$img" "$tag")"
+        done
+        cp "$BOOT_APP0" "$out/$(flashed_name boot_app0.bin "$tag")"
+    else
+        # Fallback: the committed images are already in $out, already renamed.
+        for img in "${IMAGES[@]}" boot_app0.bin; do
+            fn="$(flashed_name "$img" "$tag")"
+            if [ ! -f "$out/$fn" ]; then
+                echo "ERROR: missing $subdir ESP image $out/$fn" >&2
+                echo "       build the ESP firmware first (see CLAUDE.md) or install arduino-cli." >&2
+                exit 1
+            fi
+        done
     fi
     if ! ls "$out"/flash_*.txt >/dev/null 2>&1; then
         echo "ERROR: $out is missing its committed flash_*.txt." >&2
