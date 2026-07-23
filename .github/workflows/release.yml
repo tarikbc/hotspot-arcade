@@ -131,8 +131,8 @@ jobs:
             there is no SD setup and nothing else to download. Flash the board from the app itself
             with **Install Firmware**.
 
-            > **First launch can take up to 2 minutes** (and again after an update). The .fap
-            > carries about 1.9 MB of bundled content (two board firmwares, the phone game bundle,
+            > **First launch can take up to 3 minutes** (and again after an update). The .fap
+            > carries about 3 MB of bundled content (three board firmwares, the phone game bundle,
             > the content packs) and the Flipper unpacks it to the SD card on first open. The
             > hourglass is the system loader doing that, not a hang, so give it a minute or two.
             > Every launch after that is instant.
@@ -149,7 +149,7 @@ jobs:
 
             ## Flash the ESP board from a computer (optional)
 
-            Or skip this entirely and use **Install Firmware** on the Flipper — it flashes either board.
+            Or skip this entirely and use **Install Firmware** on the Flipper — it flashes any of the boards.
 
             **ESP32-S2 dev board** — download mode: hold BOOT, tap RESET, release BOOT.
             **Never `--erase-all` on the S2.** Then tap RESET to run.

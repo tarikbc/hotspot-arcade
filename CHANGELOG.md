@@ -6,6 +6,27 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-07-22
+
+Third board: **ESP32-C5**. From @xMasterX, tested on C5 hardware. Firmware **v11**
+(no protocol change).
+
+### Added
+
+- **ESP32-C5 support.** Same sketch builds for the C5 (against a 3.x esp32 core; S2/WROOM
+  stay pinned to 2.0.17), with C5 rows in the board picker and a `c5-merged.bin` on the
+  release for computer flashing. The bootloader sits at 0x2000 on this chip.
+- The flasher falls back to the plain ROM protocol for chips the stub loader doesn't cover
+  (C5/P4), skipping the `FLASH_END` the C5 ROM rejects and rebooting with a DTR pulse. The
+  S2/WROOM stub path is unchanged. Flash errors now name the stage, image, and route.
+
+### Changed
+
+- Bundled firmware images use short names (`ha-boot-<board>.bin`, etc.) so they fit the
+  Flipper's screen while flashing.
+- The fap grows to ~3 MB (a third firmware is bundled), so the **first launch can take up
+  to 3 minutes** while the Flipper unpacks it. Docs and the release notes say so.
+
 ## [1.1.1] - 2026-07-22
 
 On-device flashing improvements from @xMasterX, who tested on an ESP32 WROOM board.
@@ -256,7 +277,8 @@ an official ESP32-S2 WiFi dev board. No internet and no app install required.
   for previewing the web client through lobby, trivia, and Connect Four in a desktop browser.
 - **CI**: a build workflow that compiles all three parts on every push and pull request.
 
-[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/tarikbc/hotspot-arcade/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/tarikbc/hotspot-arcade/compare/v1.0.0...v1.0.1
