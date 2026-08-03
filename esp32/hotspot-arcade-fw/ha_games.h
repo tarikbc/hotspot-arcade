@@ -10,6 +10,7 @@
 
 #define HA_MAX_PLAYERS 12
 #define HA_NICK_LEN 20
+#define RECONNECT_GRACE_MS 30000 // keep an active 1v1 match through brief Wi-Fi drops
 
 // Nicknames are uppercased once, here at the door, so every downstream consumer
 // (phone UI, Flipper roster, and the strings this engine composes like "A vs B")
@@ -19,6 +20,16 @@
 static inline void ha_upper(char* s) {
     for(; s && *s; s++)
         if(*s >= 'a' && *s <= 'z') *s -= 32;
+}
+
+static inline bool ha_valid_sid(const char* sid) {
+    if(!sid) return false;
+    size_t n = strlen(sid);
+    if(n < 16 || n > 24) return false;
+    for(size_t i = 0; i < n; i++)
+        if(!((sid[i] >= 'a' && sid[i] <= 'z') || (sid[i] >= '0' && sid[i] <= '9')))
+            return false;
+    return true;
 }
 
 // Duels (connect4 / tic-tac-toe / dots-and-boxes) share one match + challenge
@@ -123,6 +134,8 @@ void haUartRoundResult(const String& json);
 struct Player {
     bool used;
     uint32_t wsId; // 0 = not connected
+    uint32_t disconnectedAt; // retained briefly while an active match reconnects
+    char sid[25]; // browser-generated stable id used to reclaim this player
     char nick[HA_NICK_LEN];
     char avatar[8]; // emoji avatar (UTF-8), player-picked on the landing screen
     int32_t score;
@@ -384,21 +397,40 @@ public:
     void onWsDisconnect(uint32_t wsId) {
         uint8_t pid = pidByWs(wsId);
         if(!pid) return;
-        anyOnLeave(pid); // forfeit any active match
-        _p[pid] = Player{};
-        haUartLeave(pid);
-        triviaOnRosterChange();
-        partyRosterChanged();
+        // Captive-portal handoff and short AP radio drops replace the WebSocket.
+        // Preserve active 1v1 state briefly; hello(sid) reclaims this exact pid.
+        // Lobby/party players still leave immediately so ready rounds never stall.
+        if(_p[pid].sid[0] && inAnyMatch(pid)) {
+            _p[pid].wsId = 0;
+            _p[pid].disconnectedAt = millis();
+            pushAll();
+            return;
+        }
+        removePlayer(pid);
         pushAll();
     }
 
-    void onHello(uint32_t wsId, const char* nick, const char* avatar) {
+    void onHello(uint32_t wsId, const char* nick, const char* avatar, const char* sid) {
         uint8_t pid = pidByWs(wsId);
+        // A reconnect has a new wsId. Resolve it by stable browser identity before
+        // allocating a new pid, or placement/fire messages no longer belong to the
+        // existing match and appear to do nothing on the phone.
+        if(!pid && ha_valid_sid(sid)) {
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && strcmp(_p[i].sid, sid) == 0) {
+                    pid = i;
+                    _p[i].wsId = wsId;
+                    _p[i].disconnectedAt = 0;
+                    break;
+                }
+        }
         if(!pid) {
             pid = freePid();
             if(!pid) return; // full
             _p[pid].used = true;
             _p[pid].wsId = wsId;
+            _p[pid].disconnectedAt = 0;
+            if(ha_valid_sid(sid)) strlcpy(_p[pid].sid, sid, sizeof(_p[pid].sid));
             _p[pid].score = 0;
             strlcpy(_p[pid].nick, (nick && nick[0]) ? nick : "PLAYER", HA_NICK_LEN);
             ha_upper(_p[pid].nick);
@@ -665,6 +697,7 @@ public:
 
     // Time-based updates (trivia phases, drawing timers, pong physics). From loop().
     void tick(uint32_t now) {
+        expireDisconnected(now);
         if(_active == HA_GAME_TRIVIA)
             triviaTick(now);
         else if(_active == HA_GAME_DRAW)
@@ -691,10 +724,11 @@ public:
         char type[20];
         if(!ha_json_str(json, "t", type, sizeof(type))) return;
         if(strcmp(type, "hello") == 0) {
-            char nick[HA_NICK_LEN], avatar[8];
+            char nick[HA_NICK_LEN], avatar[8], sid[25];
             ha_json_str(json, "nick", nick, sizeof(nick));
             if(!ha_json_str(json, "avatar", avatar, sizeof(avatar))) avatar[0] = '\0';
-            onHello(wsId, nick, avatar);
+            if(!ha_json_str(json, "sid", sid, sizeof(sid))) sid[0] = '\0';
+            onHello(wsId, nick, avatar, sid);
             return;
         }
         if(strcmp(type, "ping") == 0) {
@@ -818,6 +852,26 @@ private:
             if(!_p[i].used) return i;
         return 0;
     }
+
+    void removePlayer(uint8_t pid) {
+        anyOnLeave(pid); // forfeit only after the reconnect window has elapsed
+        _p[pid] = Player{};
+        haUartLeave(pid);
+        triviaOnRosterChange();
+        partyRosterChanged();
+    }
+
+    void expireDisconnected(uint32_t now) {
+        bool changed = false;
+        for(uint8_t pid = 1; pid <= HA_MAX_PLAYERS; pid++) {
+            if(!_p[pid].used || _p[pid].wsId) continue;
+            if((uint32_t)(now - _p[pid].disconnectedAt) < RECONNECT_GRACE_MS) continue;
+            removePlayer(pid);
+            changed = true;
+        }
+        if(changed) pushAll();
+    }
+
     int connectedCount() {
         int n = 0;
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)

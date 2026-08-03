@@ -6,6 +6,20 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 
 ## [Unreleased]
 
+### Added
+
+- Board-specific FAP packages for the official ESP32-S2 Dev Board, ESP32 WROOM, and
+  ESP32-C5. Each carries the complete arcade but only one firmware image set, cutting
+  installation/opening work while retaining a universal compatibility package.
+
+### Fixed
+
+- Active 1v1 matches now survive a captive-browser handoff or brief Wi-Fi interruption.
+  A replacement WebSocket reclaims the same player and match, so Battleship placement
+  and other moves no longer appear to do nothing after reconnecting. Firmware **v17**.
+- The build selects ESP32 core 2.0.17 for S2/WROOM and 3.3.11 for C5 at the point each
+  target is compiled, preventing one board from silently using another board's core.
+
 ## [1.5.0] - 2026-08-02
 
 Full phone-UI localization and per-language content packs, with Brazilian Portuguese as

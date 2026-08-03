@@ -630,6 +630,19 @@ function storeKey(name) {
 var h = new URLSearchParams(location.search).get("harness");
 return h ? name + "_" + h : name;
 }
+function sessionId() {
+var key = storeKey("ha_sid"), sid = "";
+try { sid = localStorage.getItem(key) || ""; } catch (e) {}
+if (!/^[a-z0-9]{16,24}$/.test(sid)) {
+sid = (Date.now().toString(36) + Math.random().toString(36).slice(2) +
+Math.random().toString(36).slice(2)).slice(0, 24);
+try { localStorage.setItem(key, sid); } catch (e) {}
+}
+return sid;
+}
+function hello(nick, avatar) {
+send({ t: "hello", nick: nick, avatar: avatar, sid: sessionId() });
+}
 function connect() {
 var ws = harnessSocket();
 if (!ws) {
@@ -641,7 +654,7 @@ ws.onopen = function () {
 A.retry = 0;
 hide("netbar");
 setDot("");           // connected
-if (A.joined) send({ t: "hello", nick: A.nick, avatar: A.avatar });
+if (A.joined) hello(A.nick, A.avatar);
 };
 ws.onmessage = function (ev) {
 var m;
@@ -780,7 +793,7 @@ setNick();
 A.initAudio();          // first gesture: unlock audio for the session
 A.sfx("start"); A.vibe(30);
 try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
-send({ t: "hello", nick: n, avatar: A.avatar });
+hello(n, A.avatar);
 screen("lobby");
 }
 function avatarOf(pid) {
@@ -835,7 +848,7 @@ A.avatar = editAvatar || A.avatar;
 setNick();
 A.sfx("start"); A.vibe(20);
 try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
-send({ t: "hello", nick: n, avatar: A.avatar });
+hello(n, A.avatar);
 closeIdEdit();
 }
 var REACTS = ["👍", "😂", "🔥", "😮", "🎉", "❤️", "😠"];

@@ -14,8 +14,8 @@ const EMPTY_A = 99, EMPTY_B = 50; // cells with no ship in the LAYOUT
 
 const e = await newEngine();
 e.reset();
-e.join(1, "ALICE");
-e.join(2, "BOB");
+e.join(1, "ALICE", "alicesession0001");
+e.join(2, "BOB", "bobsession000002");
 e.selectGame(BS);
 
 // challenge -> accept -> placement
@@ -23,26 +23,33 @@ e.input(1, { t: "challenge", to: 2 });
 let out = e.input(2, { t: "accept", from: 1 });
 assert.equal(lastToWs(out, 1, "bs").msg.phase, "place", "match starts in placement");
 
+// A captive-browser handoff replaces Alice's WebSocket during placement. The new
+// socket must reclaim pid 1 and the same match; otherwise Ready/place is ignored.
+e.disconnect(1);
+out = e.input(3, { t: "hello", nick: "ALICE", avatar: "🙂", sid: "alicesession0001" });
+assert.equal(lastToWs(out, 3, "welcome").msg.pid, 1, "reconnect reclaims the original player");
+assert.equal(lastToWs(out, 3, "bs").msg.phase, "place", "placement survives reconnect");
+
 // invalid layout (ships 0 and 1 overlap at row 0) is rejected: no state push
-let bad = e.input(1, { t: "place", ships: "0,0,0;0,0,0;2,0,0;3,0,0;4,0,0" });
-assert.equal(lastToWs(bad, 1, "bs"), undefined, "invalid placement is rejected, no change");
+let bad = e.input(3, { t: "place", ships: "0,0,0;0,0,0;2,0,0;3,0,0;4,0,0" });
+assert.equal(lastToWs(bad, 3, "bs"), undefined, "invalid placement is rejected, no change");
 
 // valid placements
-let a = lastToWs(e.input(1, { t: "place", ships: LAYOUT }), 1, "bs");
+let a = lastToWs(e.input(3, { t: "place", ships: LAYOUT }), 3, "bs");
 assert.equal(a.msg.ready, true, "valid placement readies you");
 out = e.input(2, { t: "place", ships: LAYOUT });
-a = lastToWs(out, 1, "bs");
+a = lastToWs(out, 3, "bs");
 assert.equal(a.msg.phase, "fire", "both placed -> firing");
 assert.equal(a.msg.yourTurn, true, "challenger (Alice) fires first");
 
 // a reaction inside the match reaches both players (onReact must know battleship matches)
-let rx = e.input(1, { t: "react", emoji: "🔥" });
-assert.ok(lastToWs(rx, 1, "emoji"), "your own reaction echoes back to you in a match");
+let rx = e.input(3, { t: "react", emoji: "🔥" });
+assert.ok(lastToWs(rx, 3, "emoji"), "your own reaction echoes back to you in a match");
 assert.ok(lastToWs(rx, 2, "emoji"), "your reaction reaches your opponent in a match");
 
 // a HIT keeps the turn (shoot again)
-out = e.input(1, { t: "fire", n: SHIP_CELLS[0] });
-a = lastToWs(out, 1, "bs");
+out = e.input(3, { t: "fire", n: SHIP_CELLS[0] });
+a = lastToWs(out, 3, "bs");
 assert.equal(a.msg.track[SHIP_CELLS[0]], 2, "hit shows on the tracking grid");
 assert.equal(a.msg.yourTurn, true, "a hit keeps your turn");
 
@@ -53,8 +60,8 @@ const revealed = a.msg.track.filter((v) => v !== 0).length;
 assert.equal(revealed, 1, "only the cells you've actually shot are non-zero");
 
 // a MISS passes the turn; Bob misses back to return it to Alice
-out = e.input(1, { t: "fire", n: EMPTY_A });
-a = lastToWs(out, 1, "bs");
+out = e.input(3, { t: "fire", n: EMPTY_A });
+a = lastToWs(out, 3, "bs");
 assert.equal(a.msg.track[EMPTY_A], 1, "miss shows on the tracking grid");
 assert.equal(a.msg.yourTurn, false, "a miss passes the turn");
 let b = lastToWs(out, 2, "bs");
@@ -65,12 +72,12 @@ e.input(2, { t: "fire", n: EMPTY_B }); // Bob misses, turn back to Alice
 // Alice sinks the rest. All remaining ship cells are hits, so she keeps firing.
 let sankToast = false;
 for (let i = 1; i < SHIP_CELLS.length; i++) {
-  out = e.input(1, { t: "fire", n: SHIP_CELLS[i] });
-  if (lastToWs(out, 1, "toast")) sankToast = true; // a ship went down at some point
+  out = e.input(3, { t: "fire", n: SHIP_CELLS[i] });
+  if (lastToWs(out, 3, "toast")) sankToast = true; // a ship went down at some point
 }
 assert.ok(sankToast, "sinking a ship sends a toast");
 
-a = lastToWs(out, 1, "bs");
+a = lastToWs(out, 3, "bs");
 b = lastToWs(out, 2, "bs");
 assert.equal(a.msg.phase, "over", "17 hits ends the game");
 assert.equal(a.msg.result, "win", "Alice wins");
@@ -79,16 +86,16 @@ assert.ok(Array.isArray(a.msg.oppFleet), "the enemy fleet is revealed at game ov
 assert.equal(a.msg.oppShips, 0, "all enemy ships are sunk");
 
 // rematch -> back to placement, first move alternated (Bob fires first now)
-out = e.input(1, { t: "rematch" });
-a = lastToWs(out, 1, "bs");
+out = e.input(3, { t: "rematch" });
+a = lastToWs(out, 3, "bs");
 assert.equal(a.msg.phase, "place", "rematch returns to placement");
-e.input(1, { t: "place", ships: LAYOUT });
+e.input(3, { t: "place", ships: LAYOUT });
 out = e.input(2, { t: "place", ships: LAYOUT });
 b = lastToWs(out, 2, "bs");
 assert.equal(b.msg.yourTurn, true, "rematch alternates who fires first (Bob now)");
 
 // forfeit: leaving mid-match hands the win to the opponent
-out = e.input(1, { t: "leaveGame" });
+out = e.input(3, { t: "leaveGame" });
 b = lastToWs(out, 2, "bs");
 assert.equal(b.msg.phase, "over", "opponent leaving ends the match");
 assert.equal(b.msg.result, "win", "you win when your opponent forfeits");

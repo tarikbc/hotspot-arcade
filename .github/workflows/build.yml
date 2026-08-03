@@ -19,13 +19,12 @@ jobs:
         run: pip install --upgrade ufbt
       - name: Fetch Momentum SDK
         run: ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json --channel=release --hw-target=f7
-      - name: Build fap
-        working-directory: flipper/hotspot-arcade
-        run: ufbt
+      - name: Build board-specific faps
+        run: tools/package-fap.sh --variant all
       - uses: actions/upload-artifact@v4
         with:
           name: hotspot-arcade-fap
-          path: flipper/hotspot-arcade/dist/hotspot_arcade.fap
+          path: flipper/hotspot-arcade/dist/hotspot_arcade-*.fap
 
   web-bundle:
     name: Build web bundle
@@ -64,16 +63,14 @@ jobs:
           mkdir -p "$HOME/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
           echo "$HOME/bin" >> "$GITHUB_PATH"
-      - name: Install esp32 cores
-        # Two cores on purpose: the S2/WROOM images stay pinned to 2.0.17, and the C5
-        # only exists in the 3.x line, so it builds against that instead of moving the
-        # working boards onto a core with different WiFi/USB behaviour.
+      - name: Install ESP32-S2/WROOM core
+        # arduino-cli keeps one active version of a platform. Build S2/WROOM on the
+        # pinned 2.x core before replacing it with the C5-only 3.x core below.
         run: |
           arduino-cli config init --overwrite
           arduino-cli config set board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@2.0.17
-          arduino-cli core install esp32:esp32@3.3.11
       - name: Compile firmware (all boards)
         # Same sketch, one build per supported board. AsyncTCP + ESPAsyncWebServer are
         # vendored in esp32/libs/. Output goes to build/<board>/ to match the fap's
@@ -90,6 +87,7 @@ jobs:
             --output-dir esp32/hotspot-arcade-fw/build/wroom \
             esp32/hotspot-arcade-fw
           # CDCOnBoot stays disabled so Serial is UART0 — the pins the Flipper uses.
+          arduino-cli core install esp32:esp32@3.3.11
           arduino-cli compile \
             --fqbn esp32:esp32:esp32c5:PartitionScheme=huge_app,CDCOnBoot=default \
             --libraries esp32/libs \

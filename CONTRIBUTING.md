@@ -38,6 +38,9 @@ you can develop and demo a whole game without any hardware.
   (`node web/build.mjs`) and commit it. You do **not** need `arduino-cli` — the maintainer
   regenerates the ESP firmware images and `.bundled-fw.sha256` on merge via
   `tools/build-fap.sh`. Never hand-edit a committed `.bin`.
+- **Release FAPs are board-specific:** `tools/package-fap.sh --variant all` builds the
+  S2, WROOM, and C5 packages from committed assets without rebuilding firmware. Bare
+  `ufbt` still builds the larger universal catalog fallback.
 - The `bundled-assets` CI job is the alarm for stale outputs; if it fails on your PR, run
   `node web/build.mjs` and commit.
 

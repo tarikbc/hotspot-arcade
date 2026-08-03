@@ -135,7 +135,8 @@ jobs:
         run: |
           pip install --upgrade ufbt
           ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json --channel=release --hw-target=f7
-          cd flipper/hotspot-arcade && ufbt
+          tools/package-fap.sh --variant all
+          tools/package-fap.sh --variant universal
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -148,20 +149,23 @@ jobs:
 
             ## Install
 
-            **You only need `hotspot_arcade.fap`.** Drop it in `/ext/apps/GPIO/` on the SD card.
-            The ESP firmware, the phone game bundle, and the content packs all ship inside it, so
-            there is no SD setup and nothing else to download. Flash the board from the app itself
-            with **Install Firmware**.
+            Download the FAP matching your WiFi board and drop it in `/ext/apps/GPIO/`:
 
-            > **First launch can take up to 3 minutes** (and again after an update). The .fap
-            > carries about 3 MB of bundled content (three board firmwares, the phone game bundle,
-            > the content packs) and the Flipper unpacks it to the SD card on first open. The
-            > hourglass is the system loader doing that, not a hang, so give it a minute or two.
-            > Every launch after that is instant.
+            - `hotspot_arcade-s2.fap` — official Flipper WiFi Dev Board (ESP32-S2)
+            - `hotspot_arcade-wroom.fap` — ESP32 WROOM
+            - `hotspot_arcade-c5.fap` — ESP32-C5
+
+            Each carries only that board's firmware plus the complete game bundle and packs, so it
+            opens and installs faster. `hotspot_arcade-universal.fap` remains available if you need
+            one file that can flash all three board types.
+
+            Firmware is installed only when you explicitly choose **Install Firmware**. It stays in
+            the board's flash across power cycles; **Start Session** never reflashes it.
 
             ## Assets
 
-            - `hotspot_arcade.fap`: the whole thing. This is the one you want.
+            - `hotspot_arcade-{s2,wroom,c5}.fap`: efficient board-specific packages.
+            - `hotspot_arcade-universal.fap`: larger compatibility package with all three firmwares.
             - `firmware-merged.bin`: the ESP32-S2 firmware as a single image, if you'd rather flash
               that board from a computer (optional — the fap already carries it).
             - `wroom-merged.bin`: the same, for an ESP32 WROOM board (optional — the fap carries it too).
@@ -184,13 +188,18 @@ jobs:
 
             ```sh
             esptool.py --chip esp32 --before default_reset --after hard_reset write_flash 0x0 wroom-merged.bin
+            ```
 
-            ESP32-C5:
+            **ESP32-C5:**
 
+            ```sh
             esptool.py --chip esp32c5 --before default_reset --after hard_reset write_flash 0x0 c5-merged.bin
             ```
           files: |
-            flipper/hotspot-arcade/dist/hotspot_arcade.fap
+            flipper/hotspot-arcade/dist/hotspot_arcade-s2.fap
+            flipper/hotspot-arcade/dist/hotspot_arcade-wroom.fap
+            flipper/hotspot-arcade/dist/hotspot_arcade-c5.fap
+            flipper/hotspot-arcade/dist/hotspot_arcade-universal.fap
             web/web-bundle.zip
             esp32/hotspot-arcade-fw/build/firmware-merged.bin
             esp32/hotspot-arcade-fw/build-wroom/wroom-merged.bin

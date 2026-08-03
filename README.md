@@ -148,17 +148,18 @@ the games stay in sync.
 
 ## Install
 
-**You only need `hotspot_arcade.fap`.** Grab it from the
+Grab the FAP matching your board from the
 [latest release](https://github.com/tarikbc/hotspot-arcade/releases/latest) and drop it in
-`/ext/apps/GPIO/` on the SD card (qFlipper, or the Flipper's own file manager). No SD
-setup, no separate downloads: the ESP firmware, the phone game bundle, and the content
-packs all ship inside the .fap.
+`/ext/apps/GPIO/` on the SD card (qFlipper, or the Flipper's own file manager):
 
-> **First launch can take up to 3 minutes.** The .fap carries about 3 MB of bundled
-> content (three board firmwares, the web bundle, the packs) and the Flipper unpacks it to
-> the SD card the first time you open the app (and again after an update). The hourglass is
-> the system loader doing that, not a hang, so give it a minute or two. Every launch after
-> that is instant.
+- `hotspot_arcade-s2.fap` — official Flipper WiFi Dev Board (ESP32-S2)
+- `hotspot_arcade-wroom.fap` — ESP32 WROOM
+- `hotspot_arcade-c5.fap` — ESP32-C5
+
+Each package carries the complete phone game and content packs but only its board's
+firmware, minimizing FAP size and asset extraction time. The larger
+`hotspot_arcade-universal.fap` can flash all three board types when one shared file is
+more convenient.
 
 Then, on the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
 
@@ -171,6 +172,10 @@ shows when it doesn't see a board (or sees one on older firmware).
 Put the ESP in download mode when asked (**hold BOOT, tap RESET, release BOOT**); it
 verifies with MD5, then asks you to **tap RESET** to boot the new firmware, and continues
 on its own once the board comes back.
+
+Firmware installation is explicit and normally needed only once. It remains in the ESP's
+flash across power cycles. **Start Session** detects the installed version, uploads the
+current web/game content, and starts the hotspot; it never silently reflashes the board.
 
 Prefer a computer? `firmware-merged.bin` on the release flashes at `0x0` with esptool
 (**never `--erase-all` on the S2**).
@@ -209,10 +214,12 @@ arduino-cli compile --fqbn esp32:esp32:esp32c5:PartitionScheme=huge_app,CDCOnBoo
   --libraries esp32/libs --output-dir esp32/hotspot-arcade-fw/build/c5 esp32/hotspot-arcade-fw
 ```
 
-**3. Flipper app** — use the wrapper, not bare `ufbt`: it refreshes the bundled firmware
-images, web bundle, and content packs inside `assets/` before packaging.
+**3. Flipper app** — use the wrapper to refresh the firmware, web bundle, and packs, then
+produce an efficient package for one board or all three release variants.
 ```sh
-tools/build-fap.sh                         # -> dist/hotspot_arcade.fap
+tools/build-fap.sh --variant s2            # -> dist/hotspot_arcade-s2.fap
+tools/build-fap.sh --variant all           # -> s2, wroom, and c5 FAPs
+tools/package-fap.sh --variant universal   # package committed assets without rebuilding
 python3 tools/deploy-to-flipper.py --port /dev/cu.usbmodemflip_XXXX
 ```
 The deploy script pushes the fap to `/ext/apps/GPIO/` and your working copies of the web

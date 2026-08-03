@@ -118,7 +118,7 @@ REVEAL/ROUND_END flow down as the host drives rounds. PING beacons throughout.
 
 | `t`        | Fields | Meaning |
 |------------|--------|---------|
-| `hello`    | `nick` | Join / re-join with a nickname (from localStorage) |
+| `hello`    | `nick`, optional `avatar`, `sid` | Join with saved identity. `sid` is a browser-generated 16–24 character token used to reclaim the same player and active 1v1 match after a replacement WebSocket. |
 | `answer`   | `c` (0-3) | Trivia: buzz an answer for the current question |
 | `challenge`| `to` (pid) | Connect4: challenge a player in the lobby |
 | `accept`   | `from` (pid) | Connect4: accept a pending challenge |
@@ -126,6 +126,11 @@ REVEAL/ROUND_END flow down as the host drives rounds. PING beacons throughout.
 | `move`     | `col` (0-6) | Connect4: drop a disc in a column |
 | `leaveGame`| | Connect4: forfeit/exit the current match |
 | `ping`     | | keepalive |
+
+When an identified player in an active 1v1 match disconnects, the ESP reserves that
+player and match for 30 seconds. A new socket sending the same `sid` reclaims the original
+`pid`; expiry becomes a normal leave/forfeit. Lobby and whole-group players still leave
+immediately so ready rounds cannot stall.
 
 ### 2.2 Server -> Client
 

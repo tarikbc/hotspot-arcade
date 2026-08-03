@@ -69,6 +69,13 @@ void ha_storage_save_config(HotspotArcadeApp* app) {
     furi_record_close(RECORD_STORAGE);
 }
 
+bool ha_storage_file_exists(const char* path) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    bool exists = storage_file_exists(storage, path);
+    furi_record_close(RECORD_STORAGE);
+    return exists;
+}
+
 bool ha_storage_read_file(const char* path, FuriString* out, size_t cap) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);

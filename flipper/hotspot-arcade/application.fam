@@ -1,3 +1,9 @@
+import os
+
+# Release builds can point this at a generated, board-specific asset tree. Bare ufbt
+# and the app catalog keep the universal committed tree for backwards compatibility.
+_ha_fap_assets = os.environ.get("HA_FAP_ASSETS", "assets")
+
 App(
     appid="hotspot_arcade",
     name="[ESP32] Hotspot Arcade",
@@ -7,10 +13,9 @@ App(
     stack_size=8 * 1024,
     fap_private_libs=[
         # espressif/esp-serial-flasher @ 3c424d2 (Apache-2.0), UART interface only.
-        # We provide the loader_port_* port in helpers/ha_esp_port.c. esp_stubs.c is
-        # trimmed to the ESP32-S2 entry only (positional {} for the other chips) so
-        # the whole stub table doesn't bloat the RAM-loaded fap. See LICENSE in the
-        # lib dir. Do NOT pull in any GPL flipperzero-esp-flasher sources.
+        # We provide the loader_port_* port in helpers/ha_esp_port.c. esp_stubs.c keeps
+        # only the classic ESP32 + ESP32-S2 blobs; the C5 uses its ROM loader. See
+        # LICENSE in the lib dir. Do NOT pull in GPL flipperzero-esp-flasher sources.
         Lib(
             name="esp-serial-flasher",
             fap_include_paths=["include"],
@@ -50,10 +55,10 @@ App(
     # not in git is simply missing from the catalog's .fap. Refresh them with
     # tools/build-fap.sh whenever the ESP firmware or the web client changes — nothing
     # else will notice that they've gone stale.
-    fap_file_assets="assets",
+    fap_file_assets=_ha_fap_assets,
     fap_category="GPIO",
     fap_icon="icons/icon_10px.png",
     fap_author="Tarik Caramanico",
-    fap_version="1.5",
-    fap_description="Host an offline multiplayer game hotspot on the ESP32-S2 WiFi board. People nearby join your WiFi and play in their phone browser, no internet needed: trivia, Would You Rather, Word Scramble, Reaction Duel, Connect Four, Tic-Tac-Toe, Dots & Boxes, Reversi, drawing, and Pong, with emoji avatars and reactions. The Flipper shows the lobby and scoreboard, and can flash the ESP board on-device.",
+    fap_version="1.6",
+    fap_description="Host an offline multiplayer game hotspot on a supported ESP32 WiFi board. People nearby join your WiFi and play in their phone browser, no internet needed. The Flipper shows the lobby and scoreboard, and can explicitly flash the bundled firmware for the official ESP32-S2 Dev Board, ESP32 WROOM, or ESP32-C5.",
 )

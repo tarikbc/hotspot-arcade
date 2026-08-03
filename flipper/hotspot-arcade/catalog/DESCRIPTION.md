@@ -18,13 +18,13 @@ This app needs an ESP32 WiFi board on the GPIO header. Three are supported:
 - An **ESP32 WROOM** board
 - An **ESP32-C5** board
 
-The board must run the Hotspot Arcade firmware. Flash it **straight from the Flipper**
-with the built-in **Install Firmware** option (no computer needed) — pick your board from
-the list — or flash it from a computer with esptool.
+The board must run the Hotspot Arcade firmware. Download the FAP matching your board,
+then flash it **straight from the Flipper** with the explicit **Install Firmware** option
+(no computer needed), or flash it from a computer with esptool. The firmware remains on
+the board across power cycles; **Start Session** does not reinstall it.
 
-**First launch can take up to 3 minutes** (and again after each update): the app unpacks
-its bundled firmware and game files to the SD card. The hourglass is the loader working,
-not a hang. Every launch after that is instant.
+Board-specific FAPs avoid unpacking firmware for hardware you do not own. A larger
+universal package that can flash all three targets is also available.
 
 ## Fourteen games
 

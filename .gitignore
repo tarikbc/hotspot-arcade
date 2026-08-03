@@ -1,6 +1,7 @@
 # Flipper build output
 flipper/hotspot-arcade/dist/
 flipper/hotspot-arcade/.vscode/
+flipper/hotspot-arcade/.fap-assets/
 *.fap
 
 # ESP build output

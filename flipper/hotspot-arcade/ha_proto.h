@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41
 #define HA_FW_MAGIC_2 0x52
 #define HA_FW_MAGIC_3 0x43
-#define HA_FW_VERSION 16 // v16: phone-UI language relayed to the client
+#define HA_FW_VERSION 17 // v17: preserve active matches across Wi-Fi reconnects
 
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES   0x10

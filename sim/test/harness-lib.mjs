@@ -27,7 +27,7 @@ export async function newEngine() {
     },
     contentItem: (json) => { M.ccall("ha_content_item", null, ["string"], [json]); return drain(); },
   };
-  api.join = (wsId, nick) => api.input(wsId, { t: "hello", nick, avatar: "🙂" });
+  api.join = (wsId, nick, sid) => api.input(wsId, { t: "hello", nick, avatar: "🙂", ...(sid ? { sid } : {}) });
   return api;
 }
 

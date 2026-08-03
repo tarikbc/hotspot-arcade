@@ -1,4 +1,5 @@
 #include "../hotspot_arcade_i.h"
+#include "../helpers/ha_storage.h"
 
 // Pick which ESP board to flash, then hand off to the flasher. Each supported board's
 // firmware is bundled in the fap (assets/firmware/<board>/), so this is a pure selector
@@ -35,11 +36,18 @@ void hotspot_arcade_scene_board_select_on_enter(void* context) {
     }
     submenu_reset(app->submenu);
     submenu_set_header(app->submenu, "Select your board");
-    submenu_add_item(app->submenu, "Official Dev Board", BoardOfficial, ha_board_cb, app);
-    submenu_add_item(app->submenu, "WROOM (auto boot)", BoardWroomBoot, ha_board_cb, app);
-    submenu_add_item(app->submenu, "ESP32 WROOM", BoardWroom, ha_board_cb, app);
-    submenu_add_item(app->submenu, "C5 (auto boot)", BoardC5Boot, ha_board_cb, app);
-    submenu_add_item(app->submenu, "ESP32 C5", BoardC5, ha_board_cb, app);
+    // Efficient release FAPs contain exactly one board image; the universal fallback
+    // contains all three. Never offer a target whose manifest is absent.
+    if(ha_storage_file_exists(HA_OFFICIAL_FW))
+        submenu_add_item(app->submenu, "Official Dev Board", BoardOfficial, ha_board_cb, app);
+    if(ha_storage_file_exists(HA_WROOM_FW)) {
+        submenu_add_item(app->submenu, "WROOM (auto boot)", BoardWroomBoot, ha_board_cb, app);
+        submenu_add_item(app->submenu, "ESP32 WROOM", BoardWroom, ha_board_cb, app);
+    }
+    if(ha_storage_file_exists(HA_C5_FW)) {
+        submenu_add_item(app->submenu, "C5 (auto boot)", BoardC5Boot, ha_board_cb, app);
+        submenu_add_item(app->submenu, "ESP32 C5", BoardC5, ha_board_cb, app);
+    }
     view_dispatcher_switch_to_view(app->view_dispatcher, HaViewSubmenu);
 }
 

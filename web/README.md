@@ -69,7 +69,8 @@ rules. Set `PORT` to change the port: `PORT=8091 npm run mock`.
 
 ## Protocol
 
-Client -> server: `hello`, `answer`, `challenge`, `accept`, `cancel`, `move`,
+Client -> server: `hello` (including a stable browser `sid` for match reconnects),
+`answer`, `challenge`, `accept`, `cancel`, `move`,
 `leaveGame`, `ping`. Server -> client: `welcome`, `lobby`, `trivia`, `c4`,
 `toast`, `pong`. The ESP is authoritative; the client sends intents and renders
 server state. The trivia countdown is cosmetic: the client learns the server

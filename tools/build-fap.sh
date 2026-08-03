@@ -14,9 +14,27 @@
 # If arduino-cli isn't available it falls back to the already-built images in
 # esp32/hotspot-arcade-fw/build/ (and errors if those are missing too).
 #
-# Usage: tools/build-fap.sh
+# Usage:
+#   tools/build-fap.sh --variant s2       # smallest official-board package
+#   tools/build-fap.sh --variant wroom    # smallest WROOM package
+#   tools/build-fap.sh --variant c5       # smallest C5 package
+#   tools/build-fap.sh --variant all      # all three efficient release packages
+#   tools/build-fap.sh --variant universal # one larger compatibility package
 set -euo pipefail
 
+VARIANT="universal"
+if [[ "${1:-}" == "--variant" ]]; then
+    [ "$#" -ge 2 ] || { echo "ERROR: --variant needs a value" >&2; exit 2; }
+    VARIANT="$2"
+    shift 2
+elif [[ "${1:-}" == --variant=* ]]; then
+    VARIANT="${1#--variant=}"
+    shift
+fi
+case "$VARIANT" in
+    s2|wroom|c5|all|universal) ;;
+    *) echo "ERROR: variant must be s2, wroom, c5, all, or universal" >&2; exit 2 ;;
+esac
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ESP_DIR="$REPO/esp32/hotspot-arcade-fw"
 ESP_BUILD="$ESP_DIR/build"
@@ -106,9 +124,17 @@ find_boot_app0() {
 for entry in "${BOARDS[@]}"; do
     IFS='|' read -r fqbn subdir board_core <<< "$entry"
     board_core="${board_core:-$CORE_VER}"
+    tag="$(board_tag "$subdir")"
+    if [[ "$VARIANT" != "all" && "$VARIANT" != "universal" && "$VARIANT" != "$tag" ]]; then
+        continue
+    fi
     out="$ASSETS_FW/$subdir"
     BOOT_APP0=""
     if [ -n "$ACLI" ]; then
+        # arduino-cli keeps one version of a platform active. Select the version
+        # declared by this board before locating boot_app0 and compiling it.
+        echo "==> Selecting esp32 core $board_core for $subdir"
+        "$ACLI" core install "esp32:esp32@$board_core"
         BOOT_APP0="$(find_boot_app0 "$board_core" || true)"
         if [ -z "$BOOT_APP0" ]; then
             echo "ERROR: could not find boot_app0.bin for the esp32 $board_core core." >&2
@@ -122,13 +148,13 @@ for entry in "${BOARDS[@]}"; do
         echo "==> Building $subdir firmware ($fqbn)"
         "$ACLI" compile --fqbn "$fqbn" \
             --libraries "$REPO/esp32/libs" \
+            --build-path "$build/.cache" \
             --output-dir "$build" \
             "$ESP_DIR"
     else
         echo "==> arduino-cli not found; keeping the committed $subdir images"
         build="$out"
     fi
-    tag="$(board_tag "$subdir")"
     if [ -n "$ACLI" ]; then
         # Fresh build: the images are still arduino-named in $build, and get their
         # short flashed names as they are copied into assets/firmware/<subdir>/.
@@ -160,8 +186,17 @@ for entry in "${BOARDS[@]}"; do
     fi
 done
 
-# Record which ESP sources these images came from, so CI can catch a stale commit.
-"$REPO/tools/asset-stamp.sh" > "$REPO/flipper/hotspot-arcade/.bundled-fw.sha256"
+# Record which ESP sources these images came from only after every committed board
+# target was rebuilt. A one-board developer package must not falsely bless stale images
+# for the other targets; without arduino-cli, stale images are a hard error.
+STAMP="$REPO/flipper/hotspot-arcade/.bundled-fw.sha256"
+CURRENT_STAMP="$("$REPO/tools/asset-stamp.sh")"
+if [ -n "$ACLI" ] && [[ "$VARIANT" == "all" || "$VARIANT" == "universal" ]]; then
+    printf '%s\n' "$CURRENT_STAMP" > "$STAMP"
+elif [ -z "$ACLI" ] && [ "$(cat "$STAMP" 2>/dev/null || true)" != "$CURRENT_STAMP" ]; then
+    echo "ERROR: firmware sources changed but arduino-cli is unavailable; refusing stale images" >&2
+    exit 1
+fi
 ls -la "$ASSETS_FW"
 
 # --- populate assets/web/ and assets/packs/ ---
@@ -206,8 +241,5 @@ done
 ls -la "$ASSETS_WEB"
 ls -la "$ASSETS_PACKS"/*
 
-# --- build the fap (bundles assets/) ---
-echo "==> Running ufbt"
-cd "$REPO/flipper/hotspot-arcade"
-ufbt "$@"
-echo "==> Done: flipper/hotspot-arcade/dist/hotspot_arcade.fap"
+# --- package one universal FAP or the lightweight per-board release FAPs ---
+UFBT="${UFBT:-ufbt}" "$REPO/tools/package-fap.sh" --variant "$VARIANT" "$@"

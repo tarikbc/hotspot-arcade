@@ -9,6 +9,10 @@ void ha_storage_ensure_dirs(void);
 void ha_storage_load_config(HotspotArcadeApp* app);
 void ha_storage_save_config(HotspotArcadeApp* app);
 
+// True when a bundled/user file exists. Board-specific FAPs use this to expose
+// only the firmware target actually carried by that package.
+bool ha_storage_file_exists(const char* path);
+
 // Read a file (text or binary) into `out`, capped at `cap` bytes. Binary-safe.
 // Returns false on error/empty.
 bool ha_storage_read_file(const char* path, FuriString* out, size_t cap);

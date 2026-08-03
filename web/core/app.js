@@ -299,6 +299,24 @@ function storeKey(name) {
   return h ? name + "_" + h : name;
 }
 
+/* Stable identity for WebSocket reconnects. A captive-portal handoff or brief Wi-Fi
+   interruption creates a new socket; this token lets the ESP reattach that socket to
+   the same player and active 1v1 match instead of silently rejecting their moves. */
+function sessionId() {
+  var key = storeKey("ha_sid"), sid = "";
+  try { sid = localStorage.getItem(key) || ""; } catch (e) {}
+  if (!/^[a-z0-9]{16,24}$/.test(sid)) {
+    sid = (Date.now().toString(36) + Math.random().toString(36).slice(2) +
+      Math.random().toString(36).slice(2)).slice(0, 24);
+    try { localStorage.setItem(key, sid); } catch (e) {}
+  }
+  return sid;
+}
+
+function hello(nick, avatar) {
+  send({ t: "hello", nick: nick, avatar: avatar, sid: sessionId() });
+}
+
 function connect() {
   var ws = harnessSocket();
   if (!ws) {
@@ -313,7 +331,7 @@ function connect() {
     setDot("");           // connected
     // Auto (re)join only if we already have a nickname. A first-time visitor
     // stays on the landing screen until they press Play.
-    if (A.joined) send({ t: "hello", nick: A.nick, avatar: A.avatar });
+    if (A.joined) hello(A.nick, A.avatar);
   };
 
   ws.onmessage = function (ev) {
@@ -494,7 +512,7 @@ function startPlay() {
   A.initAudio();          // first gesture: unlock audio for the session
   A.sfx("start"); A.vibe(30);
   try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
-  send({ t: "hello", nick: n, avatar: A.avatar });
+  hello(n, A.avatar);
   screen("lobby");
 }
 
@@ -564,7 +582,7 @@ function saveIdEdit() {
   setNick();
   A.sfx("start"); A.vibe(20);
   try { localStorage.setItem(storeKey("ha_nick"), n); localStorage.setItem(storeKey("ha_avatar"), A.avatar); } catch (e) {}
-  send({ t: "hello", nick: n, avatar: A.avatar });
+  hello(n, A.avatar);
   closeIdEdit();
 }
 

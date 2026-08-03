@@ -1,3 +1,10 @@
+## 1.6
+
+- Faster board-specific FAPs for ESP32-S2, ESP32 WROOM, and ESP32-C5; each contains
+  only the selected board firmware, while a universal package remains available.
+- Active 1v1 matches survive brief Wi-Fi/browser reconnects, including Battleship
+  placement. Firmware v17.
+
 ## 1.4
 
 - New game: Kiss Marry Kill. Each round a rotating chooser secretly labels three people
