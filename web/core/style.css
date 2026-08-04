@@ -692,3 +692,30 @@ h3{margin:0; font-weight:600}
   font-size:30px; background:var(--surface-2); border:2px solid var(--line);
   border-radius:var(--radius); color:var(--text)}
 .ch-promo-btn:active{border-color:var(--orange); transform:translateY(1px)}
+
+/* ---- Spyfall ------------------------------------------------------------ */
+/* One big card carries the only thing that matters (where you are and who you
+   are, or that you're the spy), and one list below it does triple duty: the
+   spy's candidate locations, the accusation ballot, and the reveal. */
+.sf-clock{font-variant-numeric:tabular-nums; font-weight:700}
+.sf-clock.hot{color:var(--bad)}
+.sf-card{display:flex; flex-direction:column; align-items:center; gap:4px;
+  background:var(--surface-2); border:2px solid var(--line); padding:16px 12px;
+  margin:10px 0; text-align:center}
+.sf-card.spy{border-color:var(--orange)}
+.sf-card.good{border-color:var(--good)}
+.sf-card.bad{border-color:var(--bad)}
+.sf-kicker{font-size:12px; letter-spacing:.10em; text-transform:uppercase; color:var(--text-dim)}
+.sf-big{font-size:24px; font-weight:800; line-height:1.15}
+.sf-card.spy .sf-big{color:var(--orange-bright)}
+.sf-sub{font-size:13px; color:var(--text-dim)}
+.sf-list{display:flex; flex-direction:column; gap:6px; margin:4px 0}
+.sf-row{display:flex; align-items:center; gap:8px; background:var(--surface);
+  border:2px solid var(--line); padding:10px 12px; min-height:44px}
+.sf-row.tap{cursor:pointer}
+.sf-row.tap:active{border-color:var(--orange); transform:translateY(1px)}
+.sf-row.armed{border-color:var(--orange); color:var(--orange-bright)}
+.sf-row.spy{border-color:var(--orange)}
+.sf-rl{flex:1; font-weight:700; font-size:15px}
+.sf-rr{font-size:12px; color:var(--text-dim); white-space:nowrap}
+.sf-note{text-align:center; color:var(--text-dim); font-size:13px; margin-top:8px; min-height:16px}

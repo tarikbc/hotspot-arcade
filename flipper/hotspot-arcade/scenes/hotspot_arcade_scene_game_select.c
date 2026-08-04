@@ -20,6 +20,7 @@ typedef enum {
     GameSpectrum,
     GameKmk,
     GameChess,
+    GameSpyfall,
     GameNone,
 } GameIndex;
 
@@ -37,6 +38,7 @@ void hotspot_arcade_scene_game_select_on_enter(void* context) {
     submenu_add_item(app->submenu, "Word Scramble", GameScramble, ha_game_cb, app);
     submenu_add_item(app->submenu, "Spectrum", GameSpectrum, ha_game_cb, app);
     submenu_add_item(app->submenu, "Kiss Marry Kill", GameKmk, ha_game_cb, app);
+    submenu_add_item(app->submenu, "Spyfall", GameSpyfall, ha_game_cb, app);
     submenu_add_item(app->submenu, "Reaction Duel", GameReact, ha_game_cb, app);
     submenu_add_item(app->submenu, "Connect Four", GameConnect4, ha_game_cb, app);
     submenu_add_item(app->submenu, "Tic-Tac-Toe", GameTicTacToe, ha_game_cb, app);
@@ -53,6 +55,7 @@ void hotspot_arcade_scene_game_select_on_enter(void* context) {
                    app->active_game == HA_GAME_SCRAMBLE   ? GameScramble :
                    app->active_game == HA_GAME_SPECTRUM   ? GameSpectrum :
                    app->active_game == HA_GAME_KMK        ? GameKmk :
+                   app->active_game == HA_GAME_SPYFALL    ? GameSpyfall :
                    app->active_game == HA_GAME_REACT      ? GameReact :
                    app->active_game == HA_GAME_CONNECT4   ? GameConnect4 :
                    app->active_game == HA_GAME_TICTACTOE  ? GameTicTacToe :
@@ -130,6 +133,10 @@ bool hotspot_arcade_scene_game_select_on_event(void* context, SceneManagerEvent 
         return true;
     case GameChess:
         ha_select_game(app, HA_GAME_CHESS);
+        scene_manager_previous_scene(app->scene_manager);
+        return true;
+    case GameSpyfall:
+        ha_select_game(app, HA_GAME_SPYFALL);
         scene_manager_previous_scene(app->scene_manager);
         return true;
     case GameNone:

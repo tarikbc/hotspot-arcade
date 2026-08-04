@@ -33,6 +33,8 @@ static const char* game_name(uint8_t g) {
         return "Kiss Marry Kill";
     case HA_GAME_CHESS:
         return "Chess";
+    case HA_GAME_SPYFALL:
+        return "Spyfall";
     default:
         return "None";
     }

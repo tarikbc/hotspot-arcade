@@ -126,6 +126,32 @@ static inline int haUtf8Len(const char* s) {
 #define KMK_GUESS_SECS 30 // guessers' window (safety timer)
 #define KMK_REVEAL_MS 7000
 
+// Spyfall: everyone at the table shares a secret location and holds a role there,
+// except one player -- the spy -- who is told neither. The room questions each other
+// out loud; the phones are only the referee. The round ends when the talk timer runs
+// out (everyone votes for the spy) or the moment the spy calls the location.
+//
+// Its content is bigger per entry than the one-line items PACK_MAX_ITEMS was sized for
+// (a location carries several roles), so Spyfall declares its own caps rather than
+// borrowing trivia's 6 packs x 32 items. Worst case is 3 x 14 x (1 name + 6 roles) =
+// 294 Arduino Strings of static state, roughly 4.7 KB of String headers plus ~5 KB of
+// heap for the text -- comfortably UNDER Would You Rather's 6 x 32 x 2 = 384 headers,
+// so an ESP32-S2 pays no more for Spyfall than for a pack game it already runs.
+#define SPYFALL_MAX_PACKS 3
+#define SPYFALL_MAX_LOCS 14
+#define SPYFALL_MAX_ROLES 6
+#define SPYFALL_ROUNDS 4 // a talking round is long, so fewer of them than the other party games
+#define SPYFALL_MIN_PLAYERS 3 // two players make the spy trivially obvious
+#define SPYFALL_TALK_SECS 360 // 6 minutes of questioning
+#define SPYFALL_VOTE_SECS 45 // vote window once the talk timer expires
+#define SPYFALL_REVEAL_MS 9000
+// How a round ended (SpyfallState::outcome), and who it scores.
+#define SPYFALL_OUT_CAUGHT 1 // a majority voted the spy: the non-spies score
+#define SPYFALL_OUT_ESCAPED 2 // the vote missed: the spy scores
+#define SPYFALL_OUT_SOLVED 3 // the spy called the location right: the spy scores extra
+#define SPYFALL_OUT_FAILED 4 // the spy called it wrong: the non-spies score
+#define SPYFALL_OUT_ABORT 5 // the spy left (or the table shrank): nobody scores
+
 #define GC_ROUNDS 5
 #define GC_PLAY_SECS 25 // safety deadline per color
 #define GC_REVEAL_MS 6000
@@ -336,6 +362,43 @@ struct KmkState {
     int gained[HA_MAX_PLAYERS + 1]; // points earned this round (shown on reveal)
 };
 
+// Spyfall content: one location and the handful of roles played at it. Its own pack
+// type (not WordPack/WyrPack) because an entry is a name plus a list, and its own
+// caps -- see the SPYFALL_* block above for the memory reasoning.
+struct SpyLoc {
+    String name;
+    String roles[SPYFALL_MAX_ROLES];
+    uint8_t roleCount;
+};
+struct SpyPack {
+    String name;
+    SpyLoc locs[SPYFALL_MAX_LOCS];
+    uint8_t count;
+};
+
+// Spyfall: reuses the Party lobby/countdown/reveal skeleton. Within a playing round
+// stage 0 is the questioning window and stage 1 the vote. Everything secret lives
+// here and is filtered per player in spyfallJson() -- the location index is never
+// serialized, only the resolved name, and only to someone allowed to see it.
+struct SpyfallState {
+    Party pt;
+    SpyPack packs[SPYFALL_MAX_PACKS];
+    uint8_t packCount;
+    int8_t vote[HA_MAX_PLAYERS + 1]; // pack index, -1 = not voted
+    uint8_t pack; // chosen pack (locked when the game starts)
+    uint16_t locSeq; // rotates the location across rounds
+    uint8_t loc; // this round's location index within the chosen pack
+    uint8_t spy; // pid of the spy this round
+    uint8_t spySeq; // rotates the spy across rounds
+    uint8_t stage; // 0 talk, 1 vote
+    bool inRound[HA_MAX_PLAYERS + 1]; // dealt in at round start; joiners wait it out
+    int8_t role[HA_MAX_PLAYERS + 1]; // role index at the location, -1 = spy / not dealt in
+    uint8_t accuse[HA_MAX_PLAYERS + 1]; // pid this player voted for, 0 = not voted
+    uint8_t outcome; // SPYFALL_OUT_*, set on reveal
+    int8_t called; // location index the spy called, -1 = they never did
+    int gained[HA_MAX_PLAYERS + 1]; // points earned this round (shown on reveal)
+};
+
 struct PongMatch {
     bool used;
     uint8_t a, b; // a = left paddle, b = right paddle
@@ -459,6 +522,7 @@ public:
         spectrumClear();
         kmkClear();
         chessClear();
+        spyfallClear();
     }
 
     // ---- roster ----
@@ -526,6 +590,7 @@ public:
         spectrumClear();
         kmkClear();
         chessClear();
+        spyfallClear();
         pushAll();
     }
 
@@ -580,6 +645,8 @@ public:
         _spec.packCount = 0;
         for(int i = 0; i < TRIVIA_MAX_TOPICS; i++) _kmk.packs[i] = WordPack{};
         _kmk.packCount = 0;
+        for(int i = 0; i < SPYFALL_MAX_PACKS; i++) _sf.packs[i] = SpyPack{};
+        _sf.packCount = 0;
         _packGame = 0;
     }
 
@@ -617,6 +684,12 @@ public:
                 _kmk.packs[_kmk.packCount].name = name;
                 _kmk.packCount++;
             }
+        } else if(game == HA_GAME_SPYFALL) {
+            if(_sf.packCount < SPYFALL_MAX_PACKS) {
+                _sf.packs[_sf.packCount] = SpyPack{};
+                _sf.packs[_sf.packCount].name = name;
+                _sf.packCount++;
+            }
         }
     }
 
@@ -628,6 +701,7 @@ public:
         else if(_packGame == HA_GAME_DRAW) drawLoadItem(json);
         else if(_packGame == HA_GAME_SPECTRUM) spectrumLoadItem(json);
         else if(_packGame == HA_GAME_KMK) kmkLoadItem(json);
+        else if(_packGame == HA_GAME_SPYFALL) spyfallLoadItem(json);
         // Unknown game ids are dropped on purpose: a newer Flipper must not be able
         // to corrupt an older board's state.
     }
@@ -717,6 +791,31 @@ public:
         return true;
     }
 
+    // Map a spyfall pack block into one location: a "Loc:" line plus one "R:" line per
+    // role played there. The Flipper ships every line of a block as its own JSON pair
+    // without interpreting it, so the role lines arrive as the SAME key repeated --
+    // ha_json_str() would only ever see the first, hence ha_json_str_nth() to walk them
+    // in file order. Extra roles beyond SPYFALL_MAX_ROLES are dropped, and a location
+    // with no roles at all is rejected (there'd be nothing to hand the players).
+    bool spyfallLoadItem(const char* json) {
+        if(_sf.packCount == 0) return false;
+        SpyPack& p = _sf.packs[_sf.packCount - 1];
+        if(p.count >= SPYFALL_MAX_LOCS) return false;
+        char buf[64];
+        if(!ha_json_str(json, "loc", buf, sizeof(buf)) || !buf[0]) return false;
+        SpyLoc loc;
+        loc.name = buf;
+        loc.roleCount = 0;
+        for(int i = 0; i < SPYFALL_MAX_ROLES; i++) {
+            if(!ha_json_str_nth(json, "r", i, buf, sizeof(buf)) || !buf[0]) break;
+            loc.roles[loc.roleCount++] = buf;
+        }
+        if(loc.roleCount == 0) return false;
+        p.locs[p.count] = loc;
+        p.count++;
+        return true;
+    }
+
     // Map a draw pack file's {word} key into the current pack.
     bool drawLoadItem(const char* json) {
         if(_d.packCount == 0) return false;
@@ -753,6 +852,8 @@ public:
             kmkClear();
         else if(_active == HA_GAME_CHESS)
             chessClear();
+        else if(_active == HA_GAME_SPYFALL)
+            spyfallClear();
         pushAll();
     }
 
@@ -779,6 +880,8 @@ public:
             kmkTick(now);
         else if(_active == HA_GAME_CHESS)
             chessTick(now);
+        else if(_active == HA_GAME_SPYFALL)
+            spyfallTick(now);
     }
 
     // ---- player input (parsed WS JSON) ----
@@ -817,6 +920,7 @@ public:
             gcReady(pid, r);
             spectrumReady(pid, r);
             kmkReady(pid, r);
+            spyfallReady(pid, r);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "topic", &v)) {
             triviaVote(pid, v);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "pack", &v)) {
@@ -824,6 +928,7 @@ public:
             scrambleVote(pid, v);
             spectrumVote(pid, v);
             kmkVote(pid, v);
+            spyfallVote(pid, v);
         } else if(strcmp(type, "tap") == 0) {
             reactTap(pid);
         } else if(strcmp(type, "clue") == 0) {
@@ -836,6 +941,10 @@ public:
             if(ha_json_int(json, "kiss", &k) && ha_json_int(json, "marry", &m) &&
                ha_json_int(json, "kill", &x))
                 kmkAssign(pid, k, m, x);
+        } else if(strcmp(type, "accuse") == 0 && ha_json_int(json, "pid", &v)) {
+            spyfallAccuse(pid, v);
+        } else if(strcmp(type, "solve") == 0 && ha_json_int(json, "loc", &v)) {
+            spyfallSolve(pid, v);
         } else if(strcmp(type, "again") == 0) {
             triviaAgain(pid);
             drawAgain(pid);
@@ -845,6 +954,7 @@ public:
             gcAgain(pid);
             spectrumAgain(pid);
             kmkAgain(pid);
+            spyfallAgain(pid);
         } else if(strcmp(type, "say") == 0) {
             char t[120];
             if(ha_json_str(json, "text", t, sizeof(t))) onSay(pid, t);
@@ -923,6 +1033,7 @@ private:
     SpectrumState _spec = {};
     KmkState _kmk = {};
     ChessMatch _cm[CHESS_MAX] = {};
+    SpyfallState _sf = {};
 
     uint8_t freePid() {
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
@@ -966,6 +1077,8 @@ private:
                 haWsSendWs(_p[pid].wsId, kmkJson(pid));
             else if(_active == HA_GAME_CHESS)
                 haWsSendWs(_p[pid].wsId, chessJson(pid));
+            else if(_active == HA_GAME_SPYFALL)
+                haWsSendWs(_p[pid].wsId, spyfallJson(pid));
         }
     }
 
@@ -1026,6 +1139,8 @@ private:
             return "kmk";
         case HA_GAME_CHESS:
             return "chess";
+        case HA_GAME_SPYFALL:
+            return "spyfall";
         default:
             return "none";
         }
@@ -2350,6 +2465,8 @@ private:
             spectrumCheckStart();
         else if(_active == HA_GAME_KMK)
             kmkCheckStart();
+        else if(_active == HA_GAME_SPYFALL)
+            spyfallRosterChanged();
     }
 
     // ---------- would you rather (live A/B poll) ----------
@@ -4639,6 +4756,408 @@ private:
         } else {
             s += ",\"deadline\":" + String(pt.deadline) + ",\"dur\":" +
                  String(_kmk.stage == 0 ? KMK_CHOOSE_SECS : KMK_GUESS_SECS);
+        }
+        s += ",\"scores\":" + playersJson() + "}";
+        return s;
+    }
+
+    // ---------- Spyfall (one player doesn't know where they are) ----------
+    // Which pack wins the pre-game vote; identical policy to wyrWinningPack(), just
+    // over SPYFALL_MAX_PACKS instead of the shared topic cap.
+    int spyfallWinningPack() {
+        if(_sf.packCount == 0) return 0;
+        int votes[SPYFALL_MAX_PACKS] = {0};
+        int total = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _sf.vote[i] >= 0 && _sf.vote[i] < _sf.packCount) {
+                votes[_sf.vote[i]]++;
+                total++;
+            }
+        if(total == 0) return (int)random(_sf.packCount);
+        int best = 0;
+        for(int i = 1; i < _sf.packCount; i++)
+            if(votes[i] > votes[best]) best = i;
+        int tie[SPYFALL_MAX_PACKS], tn = 0;
+        for(int i = 0; i < _sf.packCount; i++)
+            if(votes[i] == votes[best]) tie[tn++] = i;
+        return tie[(int)random(tn)];
+    }
+
+    void spyfallClear() {
+        partyClear(_sf.pt);
+        _sf.pack = 0;
+        _sf.locSeq = 0;
+        _sf.loc = 0;
+        _sf.spy = 0;
+        _sf.spySeq = 0;
+        _sf.stage = 0;
+        _sf.outcome = 0;
+        _sf.called = -1;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _sf.vote[i] = -1;
+            _sf.inRound[i] = false;
+            _sf.role[i] = -1;
+            _sf.accuse[i] = 0;
+            _sf.gained[i] = 0;
+        }
+    }
+
+    void spyfallReady(uint8_t pid, bool val) {
+        if(_active != HA_GAME_SPYFALL) return;
+        if(_sf.pt.phase != 0 && _sf.pt.phase != 4) return;
+        if(_sf.pt.phase == 4 && val) spyfallClear(); // ready from final -> new game
+        _sf.pt.ready[pid] = val;
+        spyfallCheckStart();
+        pushAll();
+    }
+
+    void spyfallVote(uint8_t pid, int pack) {
+        if(_active != HA_GAME_SPYFALL || _sf.pt.phase != 0) return;
+        if(pack < 0 || pack >= _sf.packCount) return;
+        _sf.vote[pid] = (int8_t)pack;
+        pushAll();
+    }
+
+    // Unlike the other party games this one needs a quorum: with two players the spy
+    // is whoever isn't you, so the lobby holds until SPYFALL_MIN_PLAYERS are in.
+    void spyfallCheckStart() {
+        if(_sf.packCount == 0) return;
+        Party& pt = _sf.pt;
+        bool go = partyAllReady(pt) && connectedCount() >= SPYFALL_MIN_PLAYERS;
+        if(pt.phase == 0 && go) {
+            pt.phase = 1;
+            pt.countdownEnd = millis() + (uint32_t)PARTY_COUNTDOWN * 1000;
+            pt.lastSec = -1;
+        } else if(pt.phase == 1 && !go) {
+            pt.phase = 0;
+        }
+    }
+
+    // The spy rotates across rounds: the (spySeq mod N)-th connected player, the same
+    // walk spectrum uses for its psychic, so over a game everyone takes a turn.
+    uint8_t spyfallPickSpy() {
+        int n = connectedCount();
+        if(n <= 0) return 0;
+        int want = _sf.spySeq % n, seen = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used) continue;
+            if(seen == want) return i;
+            seen++;
+        }
+        return 0;
+    }
+
+    void spyfallNextRound(uint32_t now) {
+        Party& pt = _sf.pt;
+        SpyPack& pk = _sf.packs[_sf.pack];
+        if(pt.round >= SPYFALL_ROUNDS || pk.count == 0 ||
+           connectedCount() < SPYFALL_MIN_PLAYERS) {
+            pt.phase = 4; // final
+            pushAll();
+            return;
+        }
+        pt.round++;
+        _sf.spy = spyfallPickSpy();
+        _sf.spySeq++;
+        _sf.loc = (uint8_t)(_sf.locSeq % pk.count);
+        _sf.locSeq++;
+        _sf.stage = 0; // questioning first
+        _sf.outcome = 0;
+        _sf.called = -1;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _sf.inRound[i] = false;
+            _sf.role[i] = -1;
+            _sf.accuse[i] = 0;
+            _sf.gained[i] = 0;
+        }
+        // Deal the roles from a shuffled order so the same seat doesn't keep drawing
+        // the pack's first role, and so a table smaller than the role list still gets
+        // a varied spread. With more players than roles they simply wrap and repeat.
+        uint8_t order[SPYFALL_MAX_ROLES];
+        uint8_t rc = pk.locs[_sf.loc].roleCount;
+        for(uint8_t i = 0; i < rc; i++) order[i] = i;
+        for(int i = (int)rc - 1; i > 0; i--) {
+            int j = (int)random(i + 1);
+            uint8_t t = order[i];
+            order[i] = order[j];
+            order[j] = t;
+        }
+        int next = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used) continue;
+            _sf.inRound[i] = true;
+            if(i == _sf.spy) continue; // the spy gets no role, and never will
+            if(rc) _sf.role[i] = (int8_t)order[next++ % rc];
+        }
+        pt.deadline = now + (uint32_t)SPYFALL_TALK_SECS * 1000;
+        pt.phase = 2;
+        pushAll();
+    }
+
+    // Everyone dealt into the round votes, the spy included (they vote to blend in).
+    bool spyfallAllVoted() {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used || !_sf.inRound[i]) continue;
+            n++;
+            if(!_sf.accuse[i]) return false;
+        }
+        return n >= 2;
+    }
+
+    void spyfallAccuse(uint8_t pid, int target) {
+        if(_active != HA_GAME_SPYFALL || _sf.pt.phase != 2 || _sf.stage != 1) return;
+        if(!_sf.inRound[pid]) return; // a mid-round joiner sits this one out
+        if(target < 1 || target > HA_MAX_PLAYERS || (uint8_t)target == pid) return;
+        if(!_p[target].used || !_sf.inRound[target]) return;
+        _sf.accuse[pid] = (uint8_t)target;
+        if(spyfallAllVoted()) spyfallResolveVote(millis());
+        else pushAll();
+    }
+
+    // The spy may call the location at any point in the round. Right or wrong it ends
+    // the round there and then -- that is the spy's whole gamble.
+    void spyfallSolve(uint8_t pid, int loc) {
+        if(_active != HA_GAME_SPYFALL || _sf.pt.phase != 2) return;
+        if(pid != _sf.spy || !_sf.inRound[pid]) return;
+        SpyPack& pk = _sf.packs[_sf.pack];
+        if(loc < 0 || loc >= pk.count) return;
+        _sf.called = (int8_t)loc;
+        spyfallReveal(
+            millis(), loc == (int)_sf.loc ? SPYFALL_OUT_SOLVED : SPYFALL_OUT_FAILED);
+    }
+
+    // A strict majority of the votes actually cast has to land on the spy to catch
+    // them; a split room lets the spy walk.
+    void spyfallResolveVote(uint32_t now) {
+        int cast = 0, against = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used || !_sf.inRound[i] || !_sf.accuse[i]) continue;
+            cast++;
+            if(_sf.accuse[i] == _sf.spy) against++;
+        }
+        bool caught = cast > 0 && against * 2 > cast;
+        spyfallReveal(now, caught ? SPYFALL_OUT_CAUGHT : SPYFALL_OUT_ESCAPED);
+    }
+
+    // Scoring, deliberately in 1s and 2s so the shared leaderboard stays comparable
+    // with the other games: the non-spies take 1 each for catching the spy or for a
+    // blown location call; the spy takes 1 for surviving the vote and 2 -- the extra
+    // -- for naming the location. A round aborted by the spy leaving scores nobody.
+    void spyfallReveal(uint32_t now, uint8_t outcome) {
+        _sf.outcome = outcome;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _sf.gained[i] = 0;
+        int spyPts = 0, teamPts = 0;
+        if(outcome == SPYFALL_OUT_CAUGHT)
+            teamPts = 1;
+        else if(outcome == SPYFALL_OUT_ESCAPED)
+            spyPts = 1;
+        else if(outcome == SPYFALL_OUT_SOLVED)
+            spyPts = 2;
+        else if(outcome == SPYFALL_OUT_FAILED)
+            teamPts = 1;
+        if(spyPts && _sf.spy && _p[_sf.spy].used) {
+            _sf.gained[_sf.spy] = spyPts;
+            _p[_sf.spy].score += spyPts;
+            haUartScore(_sf.spy, spyPts, "spy");
+        }
+        if(teamPts) {
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used || !_sf.inRound[i] || i == _sf.spy) continue;
+                _sf.gained[i] = teamPts;
+                _p[i].score += teamPts;
+                haUartScore(i, teamPts, "spyfall");
+            }
+        }
+        haUartRoundResult(String("{\"spyfall\":\"round ") + _sf.pt.round + "\"}");
+        _sf.pt.phase = 3;
+        _sf.pt.revealUntil = now + SPYFALL_REVEAL_MS;
+        pushAll();
+    }
+
+    void spyfallAgain(uint8_t pid) {
+        (void)pid;
+        if(_active != HA_GAME_SPYFALL || _sf.pt.phase != 4) return;
+        spyfallClear();
+        pushAll();
+    }
+
+    // A join or a leave mid-game. Joiners are simply not in inRound[] and wait for the
+    // next round. If the spy walks out there is no round left to referee, so it ends
+    // scoring nobody and the rotation carries on; the same applies if the table falls
+    // under the quorum.
+    void spyfallRosterChanged() {
+        spyfallCheckStart();
+        Party& pt = _sf.pt;
+        if(pt.phase != 2) return;
+        int playing = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _sf.inRound[i]) playing++;
+        if(!_sf.spy || !_p[_sf.spy].used || playing < SPYFALL_MIN_PLAYERS) {
+            spyfallReveal(millis(), SPYFALL_OUT_ABORT);
+            return;
+        }
+        // A leaver takes their vote with them; the rest of the table may now be done.
+        if(_sf.stage == 1 && spyfallAllVoted()) spyfallResolveVote(millis());
+    }
+
+    void spyfallTick(uint32_t now) {
+        Party& pt = _sf.pt;
+        if(pt.phase == 1) {
+            if(partyCountdownDone(pt, now)) {
+                pt.round = 0;
+                _sf.pack = (uint8_t)spyfallWinningPack();
+                _sf.spySeq = 0;
+                _sf.locSeq = 0;
+                spyfallNextRound(now);
+            }
+        } else if(pt.phase == 2) {
+            if(_sf.stage == 0) {
+                // Talk time is up: straight to the vote, so nobody can stall the room
+                // by simply never accusing anyone.
+                if((int32_t)(now - pt.deadline) >= 0) {
+                    _sf.stage = 1;
+                    pt.deadline = now + (uint32_t)SPYFALL_VOTE_SECS * 1000;
+                    pushAll();
+                }
+            } else {
+                if((int32_t)(now - pt.deadline) >= 0 || spyfallAllVoted())
+                    spyfallResolveVote(now);
+            }
+        } else if(pt.phase == 3) {
+            if((int32_t)(now - pt.revealUntil) >= 0) spyfallNextRound(now);
+        }
+    }
+
+    static const char* spyfallOutcomeName(uint8_t o) {
+        switch(o) {
+        case SPYFALL_OUT_CAUGHT:
+            return "caught";
+        case SPYFALL_OUT_ESCAPED:
+            return "escaped";
+        case SPYFALL_OUT_SOLVED:
+            return "solved";
+        case SPYFALL_OUT_FAILED:
+            return "failed";
+        default:
+            return "aborted";
+        }
+    }
+
+    // THE hidden-information gate for this game. Everything secret is filtered here
+    // and nowhere else, exactly as spectrumJson() gates its target:
+    //   * the location name is written into a non-spy's payload from the start of the
+    //     round, and into the SPY's payload only once phase == 3 (reveal). There is no
+    //     other branch that can emit it, and the location INDEX is never serialized at
+    //     all, so nothing derivable leaks either;
+    //   * a role is only ever written into its own holder's payload -- the full role
+    //     list appears only on reveal;
+    //   * a mid-round joiner (inRound false) gets neither, whichever they'd have been.
+    String spyfallJson(uint8_t pid) {
+        Party& pt = _sf.pt;
+        if(pt.phase == 0) {
+            String s = String("{\"t\":\"spyfall\",\"phase\":\"lobby\",\"you\":") + pid +
+                       ",\"need\":" + SPYFALL_MIN_PLAYERS +
+                       ",\"players\":" + partyPlayersJson(pt);
+            s += ",\"packs\":[";
+            int votes[SPYFALL_MAX_PACKS] = {0};
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && _sf.vote[i] >= 0 && _sf.vote[i] < _sf.packCount)
+                    votes[_sf.vote[i]]++;
+            for(int i = 0; i < _sf.packCount; i++) {
+                if(i) s += ",";
+                s += "{\"name\":\"" + ha_json_escape(_sf.packs[i].name.c_str()) +
+                     "\",\"votes\":" + votes[i] + "}";
+            }
+            s += "],\"myvote\":" + String((int)_sf.vote[pid]) + "}";
+            return s;
+        }
+        if(pt.phase == 1)
+            return String("{\"t\":\"spyfall\",\"phase\":\"countdown\",\"sec\":") +
+                   partyCountdownSec(pt) + "}";
+        if(pt.phase == 4)
+            return String("{\"t\":\"spyfall\",\"phase\":\"final\",\"board\":") +
+                   triviaBoard() + "}";
+
+        SpyPack& pk = _sf.packs[_sf.pack];
+        bool reveal = (pt.phase == 3);
+        bool mine = _sf.inRound[pid];
+        bool meSpy = (mine && pid == _sf.spy);
+        const char* stage = reveal ? "reveal" : (_sf.stage == 0 ? "talk" : "vote");
+
+        String s = String("{\"t\":\"spyfall\",\"phase\":\"play\",\"stage\":\"") + stage +
+                   "\",\"round\":" + pt.round + ",\"rounds\":" + SPYFALL_ROUNDS +
+                   ",\"me\":" + (mine ? "true" : "false") +
+                   ",\"spy\":" + (meSpy ? "true" : "false");
+        if(mine && !meSpy && _sf.role[pid] >= 0)
+            s += ",\"role\":\"" +
+                 ha_json_escape(pk.locs[_sf.loc].roles[_sf.role[pid]].c_str()) + "\"";
+        if(reveal || (mine && !meSpy))
+            s += ",\"loc\":\"" + ha_json_escape(pk.locs[_sf.loc].name.c_str()) + "\"";
+        if(meSpy) {
+            // The candidate list -- never which one is right -- so the spy can bluff
+            // along and has something to call when they think they've worked it out.
+            s += ",\"locs\":[";
+            for(int i = 0; i < pk.count; i++) {
+                if(i) s += ",";
+                s += "\"" + ha_json_escape(pk.locs[i].name.c_str()) + "\"";
+            }
+            s += "]";
+        }
+        if(!reveal && _sf.stage == 1) {
+            s += ",\"cands\":[";
+            bool first = true;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used || !_sf.inRound[i]) continue;
+                if(!first) s += ",";
+                first = false;
+                s += "{\"pid\":" + String(i) + ",\"nick\":\"" +
+                     ha_json_escape(_p[i].nick) + "\",\"avatar\":\"" +
+                     ha_json_escape(_p[i].avatar) + "\"}";
+            }
+            s += "]";
+            int voted = 0;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+                if(_p[i].used && _sf.inRound[i] && _sf.accuse[i]) voted++;
+            s += ",\"myvote\":" + String((int)(mine ? _sf.accuse[pid] : 0)) +
+                 ",\"voted\":" + voted;
+        }
+        if(reveal) {
+            s += ",\"outcome\":\"" + String(spyfallOutcomeName(_sf.outcome)) +
+                 "\",\"spyPid\":" + _sf.spy + ",\"spyNick\":\"" +
+                 ha_json_escape(_p[_sf.spy].nick) + "\"";
+            if(_sf.called >= 0 && _sf.called < (int8_t)pk.count)
+                s += ",\"called\":\"" +
+                     ha_json_escape(pk.locs[_sf.called].name.c_str()) + "\"";
+            s += ",\"votes\":[";
+            bool first = true;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used || !_sf.inRound[i] || !_sf.accuse[i]) continue;
+                if(!first) s += ",";
+                first = false;
+                s += "{\"pid\":" + String(i) + ",\"nick\":\"" +
+                     ha_json_escape(_p[i].nick) + "\",\"for\":\"" +
+                     ha_json_escape(_p[_sf.accuse[i]].nick) + "\",\"hit\":" +
+                     (_sf.accuse[i] == _sf.spy ? "true" : "false") + "}";
+            }
+            s += "],\"roles\":[";
+            first = true;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used || !_sf.inRound[i]) continue;
+                if(!first) s += ",";
+                first = false;
+                s += "{\"pid\":" + String(i) + ",\"nick\":\"" +
+                     ha_json_escape(_p[i].nick) + "\",\"role\":\"";
+                if(i != _sf.spy && _sf.role[i] >= 0)
+                    s += ha_json_escape(pk.locs[_sf.loc].roles[_sf.role[i]].c_str());
+                s += "\",\"spy\":" + String(i == _sf.spy ? "true" : "false") + "}";
+            }
+            s += "],\"mygain\":" + String(_sf.gained[pid]);
+            s += ",\"deadline\":" + String(pt.revealUntil) + ",\"dur\":" +
+                 String(SPYFALL_REVEAL_MS / 1000);
+        } else {
+            s += ",\"deadline\":" + String(pt.deadline) + ",\"dur\":" +
+                 String(_sf.stage == 0 ? SPYFALL_TALK_SECS : SPYFALL_VOTE_SECS);
         }
         s += ",\"scores\":" + playersJson() + "}";
         return s;

@@ -417,3 +417,53 @@ moment either side plays a move.
 State is pushed only on events — a move, resign, draw, claim, or a flag fall the ESP
 notices on its own clock tick — never on a periodic heartbeat; clients animate the
 countdown locally between pushes from `deadline`.
+
+## 10. Spyfall (`spyfall`) — game id `19`
+
+A whole-group party game on the shared party skeleton (lobby with a ready-up + pack vote,
+countdown, reveal). Content reuses the pack pipeline with a two-key block: a `Loc:` line
+plus one `R:` line per role played there. Select with UART `SELECT_GAME` id `19`; lobby
+`game` string `"spyfall"`. Firmware **v18**. Minimum **3 players** — the lobby holds until
+three are connected, and the `lobby` message carries `need` so the phone can say so.
+
+Each round everyone is dealt the same location and a role at it, except a rotating **spy**
+who is told neither and instead receives the pack's full list of candidate locations. The
+table questions each other out loud for `SPYFALL_TALK_SECS` (360 s, shown as a bar and an
+mm:ss clock); when it expires everyone votes for the spy. The spy may instead **call the
+location** at any moment, which ends the round immediately either way.
+
+Scoring (small on purpose, so the shared leaderboard stays comparable with the other
+games): a strict majority of the votes cast landing on the spy → every non-spy **+1**; no
+majority → the spy **+1**; the spy calls the location correctly → the spy **+2**; the spy
+calls it wrong → every non-spy **+1**. A round the spy walks out of scores nobody. Four
+rounds, then the podium.
+
+Client intents: `ready`, `vote{pack}`, `accuse{pid}` (vote stage, anyone dealt into the
+round, not yourself), `solve{loc}` (spy only, any time in the round, `loc` indexes the
+`locs` list), `again`. `accuse`/`solve` are distinct intent names rather than reusing
+`vote`/`guess`, which already carry pack votes and text/colour guesses for other games.
+
+Server `{t:"spyfall",phase,...}`:
+- `"lobby"`: `you`, `need`, `players`, `packs` (name/votes), `myvote`.
+- `"countdown"`: `sec`.
+- `"play"` with `stage` `"talk"` | `"vote"` | `"reveal"`: `round`, `rounds`, `me` (was I
+  dealt into this round — a mid-round joiner is not, and waits for the next one), `spy`
+  (am I the spy), `deadline`/`dur`, `scores`.
+  - `loc` is sent to a **non-spy from the start of the round**, and to the **spy only on
+    reveal**. There is no other field carrying it and the location index is never
+    serialized, so nothing derivable leaks either.
+  - `role` is sent **only to the player holding it**. The full `roles` table exists only
+    on reveal.
+  - `locs` (the pack's whole candidate list, in pack order — identical every round, so it
+    carries no information about this round) goes **only to the spy**.
+  - vote stage adds `cands` (`pid`/`nick`/`avatar` of everyone in the round), `myvote`
+    (the pid you accused, `0` = not yet) and `voted` (how many have).
+  - reveal adds `outcome` (`caught` | `escaped` | `solved` | `failed` | `aborted`),
+    `spyPid`/`spyNick`, `called` (the location the spy named, if they did), `votes`
+    (`pid`/`nick`/`for`/`hit`), `roles` (`pid`/`nick`/`role`/`spy`) and `mygain`.
+- `"final"`: `board` (the shared leaderboard).
+
+Timers, so nobody can stall the room: the talk window expiring opens the vote by itself,
+and the vote window expiring resolves with whatever votes were cast. If the spy
+disconnects (or the table falls under three players) the round ends immediately as
+`aborted` with no scoring, and the rotation carries on into the next round.

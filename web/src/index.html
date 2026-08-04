@@ -481,6 +481,38 @@
   </div>
 </section>
 
+<!-- 17. Spyfall — everyone shares a location and a role there, except the spy, who is
+     told neither and has to blend in. The phone is only the referee; the questioning
+     happens out loud around the table. -->
+<section id="spyfall" class="screen hide">
+  <div id="sf-lobby" class="hide">
+    <header class="bar"><h2 data-i18n="sf.title">Spyfall</h2><span id="sf-me" class="me"></span></header>
+    <ul id="sf-players" class="players"></ul>
+    <p id="sf-need" class="sub"></p>
+    <button id="sf-ready" class="btn big" data-i18n="common.ready">I'm ready</button>
+    <p class="sub" data-i18n="common.vote_pack">Vote a pack</p>
+    <div id="sf-topics" class="topics"></div>
+  </div>
+  <div id="sf-count" class="hide count">
+    <div class="count-topic" data-i18n="sf.count_topic">Spyfall</div>
+    <div id="sf-count-num" class="count-num">3</div>
+    <div class="sub" data-i18n="common.starting">Starting</div>
+  </div>
+  <div id="sf-play" class="hide">
+    <div class="bar"><span id="sf-meta" class="me"></span><span id="sf-clock" class="sf-clock"></span></div>
+    <div id="sf-bar" class="timebar hide"><i></i></div>
+    <div id="sf-card" class="sf-card"></div>
+    <p id="sf-listhead" class="sub hide"></p>
+    <div id="sf-list" class="sf-list"></div>
+    <div id="sf-note" class="sf-note"></div>
+  </div>
+  <div id="sf-final" class="hide">
+    <header class="bar"><h2 data-i18n="common.final">Final</h2></header>
+    <ol id="sf-podium" class="podium"></ol>
+    <button id="sf-again" class="btn big" data-i18n="common.play_again">Play again</button>
+  </div>
+</section>
+
 <!-- Emoji reactions: floating layer + a corner button that opens the emoji row -->
 <div id="react-layer" class="react-layer" aria-hidden="true"></div>
 <div id="react-bar" class="react-bar hide">

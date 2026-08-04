@@ -1,7 +1,8 @@
 # Content packs
 
 Plain-text content for the pack-driven games, one directory per game (`packs/trivia/`,
-`packs/wyr/`, `packs/scramble/`, `packs/draw/`, `packs/spectrum/`, `packs/kmk/`).
+`packs/wyr/`, `packs/scramble/`, `packs/draw/`, `packs/spectrum/`, `packs/kmk/`,
+`packs/spyfall/`).
 
 The format is the same for every game: `Key: value` lines, with a line of `---` or a
 blank line between blocks. A `Pack:` key names the pack; without one the filename is
@@ -95,6 +96,34 @@ Word: house
 
 Same 20-character guidance as scramble. Unlike the other games, draw has no vote
 strip yet — the first pack streamed is the one played.
+
+### Spyfall's keys
+
+Its block is one `Loc:` line naming a place, followed by one `R:` line per role played
+there. `R:` is the only key in the format that is deliberately **repeated** within a
+block — the Flipper ships one JSON pair per line without interpreting it, so the engine
+reads the repeats in file order:
+
+```
+Pack: Everyday
+Loc: Beach
+R: Lifeguard
+R: Surfer
+R: Ice cream seller
+R: Sunburnt tourist
+---
+Loc: Hospital
+R: Surgeon
+R: Nurse
+R: Patient
+---
+```
+
+Give each location 4-6 roles (the engine keeps the first 6 and drops a location with
+none), and keep them short enough to read on a phone card. Spyfall's caps are its own,
+not the shared `PACK_MAX_ITEMS`: **3 packs of up to 14 locations**, so a numeric filename
+prefix (`1-everyday.txt`, `2-travel.txt`, ...) is used to make the streaming order
+obvious. Locations should be places everyone can picture and bluff about.
 
 ## Languages
 

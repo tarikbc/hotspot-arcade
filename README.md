@@ -19,7 +19,7 @@ the rounds. The ESP32 board is the **referee**: it runs the WiFi access point, s
 the game to phones, and keeps the real-time game state. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Fifteen games, all phone-driven. Pick your emoji avatar on the way in and fire off emoji
+Sixteen games, all phone-driven. Pick your emoji avatar on the way in and fire off emoji
 reactions that float up on everyone's screen mid-game.
 
 **Whole-group** (scale to everyone in the room, ready-up lobby, shared live leaderboard):
@@ -46,6 +46,12 @@ reactions that float up on everyone's screen mid-game.
   from the pack) Kiss, Marry, and Kill; everyone else predicts the chooser's assignment.
   Points for matching positions, and the chooser scores by how well the group reads them.
   Six rounds. People are the kmk packs on the SD card.
+- **Spyfall** — everyone at the table shares a secret location and holds a role there
+  (Beach: lifeguard, surfer, sunburnt tourist...) except one player, the spy, who is told
+  neither and only sees the list of possible locations. Six minutes of questioning each
+  other out loud, then everyone votes for the spy; the spy can gamble at any moment by
+  calling the location. Four rounds, rotating spy. Locations are the spyfall packs on the
+  SD card.
 
 **1v1 duels** (challenge a player, many matches at once, rematch button, wins score on
 the Flipper leaderboard):
@@ -260,11 +266,12 @@ On the Flipper: **Apps → GPIO → [ESP32] Hotspot Arcade**.
 
 ## Content packs
 
-Six games are content-driven from plain-text files under `packs/`, one directory per
-game (`trivia/`, `wyr/`, `scramble/`, `draw/`, `spectrum/`, `kmk/`). Format: `Key: value`
-lines, blocks split by `---` or a blank line, `Pack:` names the pack. The keys are per
-game — e.g. Trivia uses `Q:`, `A:`-`D:` and `Answer:`; Would You Rather uses `A:` / `B:`;
-Word Scramble and Draw &amp; Guess use `Word:`. Packs ship inside the .fap; drop your own
+Seven games are content-driven from plain-text files under `packs/`, one directory per
+game (`trivia/`, `wyr/`, `scramble/`, `draw/`, `spectrum/`, `kmk/`, `spyfall/`). Format:
+`Key: value` lines, blocks split by `---` or a blank line, `Pack:` names the pack. The
+keys are per game — e.g. Trivia uses `Q:`, `A:`-`D:` and `Answer:`; Would You Rather uses
+`A:` / `B:`; Word Scramble and Draw &amp; Guess use `Word:`; Spyfall uses `Loc:` plus one
+`R:` line per role. Packs ship inside the .fap; drop your own
 into `/ext/apps_data/hotspot_arcade/packs/<game>/` to add to them (yours win a name
 clash). See [packs/README.md](packs/README.md).
 

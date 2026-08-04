@@ -4,6 +4,26 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Spyfall**, a 16th game (whole-group). Everyone at the table shares a secret location
+  and holds a role there; one player is the spy and is told neither, seeing only the list
+  of possible locations. Six minutes of questioning out loud, then a vote for the spy --
+  or the spy can end the round at any moment by calling the location. Four rounds with a
+  rotating spy, then the usual podium. Scoring stays in 1s and 2s so the shared
+  leaderboard remains comparable: non-spies take 1 each when the spy is caught by a
+  majority or calls the location wrong, the spy takes 1 for surviving the vote and 2 for
+  calling it right. Minimum three players. Firmware **v18**.
+- **Spyfall content packs**: three English (`Everyday`, `On the Move`, `Backstage`) and
+  the same three in German, 14 locations each with five or six roles apiece. The pack
+  format extends the generic `Key: value` grammar with a `Loc:` line followed by one `R:`
+  line per role.
+- `ha_json_str_nth()` / `ha_json_find_nth()` in the ESP's JSON helpers, for content blocks
+  that legitimately repeat a key (the Flipper streams one JSON pair per source line, so
+  Spyfall's several `R:` lines arrive as the same key repeated).
+
 ## [1.6.0] - 2026-08-03
 
 Chess joins as the fifteenth game. Firmware **v17**.
