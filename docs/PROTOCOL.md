@@ -83,6 +83,7 @@ All control messages are framed so the link can resync after noise:
 | 0x84 | ROUND_RESULT | JSON, game-specific (trivia: `{"correct":[pid..]}`, c4: `{"win":pid,"lose":pid}` or `{"draw":[a,b]}`) |
 | 0x85 | EVENT        | JSON for host display, e.g. `{"answers":3,"total":5}` or `{"c4":"A vs B started"}` |
 | 0x86 | PING         | identity beacon ~every 2s: `magic(4)` + `version(2 LE)`. `magic` = `48 41 52 43` ("HARC"); the Flipper only treats a magic-matched PING as "our board present", and flags `version < HA_FW_VERSION` as an outdated board to update. |
+| 0x87 | ART          | finished artwork, streamed: `op(1)` + JSON. `op` 0 = begin a sheet (`{"game":"frankendraw","id":n,"w0":"..","w1":"..","w2":".."}` — the three panels' drawers), 1 = one line segment (`{"p":panel,"x0":..,"y0":..,"x1":..,"y1":..}`, 0..255 sheet units), 2 = end (`{"id":n}`). One frame per segment: the picture is streamed as it is finished, so neither side ever buffers a drawing. The Flipper writes each sheet to `/ext/apps_data/hotspot_arcade/art/fd-<YYMMDD-HHMMSS>-<n>.svg`. |
 
 ### 1.3 Raw-bulk escape (asset upload)
 
@@ -417,3 +418,67 @@ moment either side plays a move.
 State is pushed only on events — a move, resign, draw, claim, or a flag fall the ESP
 notices on its own clock tick — never on a periodic heartbeat; clients animate the
 countdown locally between pushes from `deadline`.
+
+## 10. Frankendraw (`frankendraw`) — game id `20`
+
+The exquisite-corpse drawing game, on the shared party skeleton (ready-up lobby,
+countdown, final podium) but with its own three-round body. Select with UART
+`SELECT_GAME` id `20`; lobby `game` string `"frankendraw"`. Firmware **v18**. No content
+packs — its UI strings are localized client-side from the message catalog.
+
+Everyone starts a sheet and everyone draws **at the same time**: round 1 the head, round
+2 the torso, round 3 the legs, 75 seconds each (the round ends early once every player
+has tapped Done). Between rounds the sheets **rotate one seat**, so each sheet is drawn
+by three different players. Minimum three players.
+
+**Sheet geometry.** A sheet is a `unit` x `unit` grid (255) split into three equal
+`band`s of 85; panel *p* owns `[p*band, p*band+band]`. Strokes go up as the same
+`{t:"stroke",x0,y0,x1,y1}` Draw & Guess uses — normalised 0..1 over the whole sheet — and
+the server quantises them onto the grid and clamps both endpoints into the sender's own
+band. Ink comes back down in grid units, as flat `[x0,y0,x1,y1, ...]` arrays.
+
+**What a drawer may see.** During a round the server sends a drawer exactly one thing:
+the bottom `over` units (7, about 8% of a band) of the panel **directly above theirs**,
+on the sheet **currently in their hands**. A segment is only included if *both* its
+endpoints sit at or below that line, so a stroke that merely dips into the sliver cannot
+drag its other end down with it. Nothing else is serialised — not the rest of that panel,
+not the panel below, not any other sheet — and a drawer's own strokes are never echoed
+back to them. Nothing is relayed live between players at all.
+
+**Rotation, joining and leaving.** Seats are frozen when the game starts (everyone
+connected then, in pid order). In round *r*, seat *k* holds sheet `(k + seats - (r-1)) %
+seats`. Joining mid-game gets no seat (`panel:-1`, `wait:true`) and plays from the next
+game. Leaving vacates the seat for the rest of the game: the sheet in that player's hands
+is **not** reassigned — everybody still playing is already holding a sheet, so handing it
+on would mean drawing two panels at once — it simply rotates on to its next scheduled
+holder, leaving that one panel blank. A panel is credited to whoever held it when the
+round started.
+
+**Scoring.** The game has no winner of its own, so the ending is a vote: after the
+gallery every player picks a favourite creature, each vote pays 100 points to each of
+that sheet's three contributors, and the most-voted sheet is crowned on the final screen.
+With exactly three players every sheet has the same three contributors, so the podium is
+flat by construction and the crowned creature is the result.
+
+Client intents: `ready`, `stroke{x0,y0,x1,y1}`, `clear` (wipes only your own panel),
+`done`, `vote{sheet}` (accepted throughout the gallery and the vote stage; the last one
+counts), `again`.
+
+Server `{t:"frankendraw",phase,...}`:
+- `"lobby"`: `you`, `players`, `need` (3).
+- `"countdown"`: `sec`.
+- `"draw"`: `round`, `rounds` (3), `unit`, `band`, `over`, `deadline`/`dur`, `scores`,
+  and per player either `panel:-1`/`wait:true` (no seat) or `panel`, `top`, `bot`,
+  `sheet`, `done`, `waiting` (how many are still drawing) and `ink` (the sliver above).
+- `"show"`: the gallery, one finished sheet at a time — `n`, `total`, `unit`, `band`,
+  `who` (the three drawers, `""` where a panel went undrawn), `ink` (an array of three
+  flat panel arrays), `mine` (your current vote, -1 = none), `deadline`/`dur`.
+- `"vote"`: `sheets` (`n`/`who`/`votes`), `mine`, `deadline`/`dur`.
+- `"final"`: `best` (sheet index), `votes`, `who`, `board` (the shared leaderboard).
+
+**Memory.** Sheets live in a fixed array sized for the worst case
+(`HA_MAX_PLAYERS` sheets x 3 panels x 64 segments x 4 bytes ~= 10 KB of `.bss`) and are
+never grown; a panel simply stops recording ink once it is full, and the client only
+sends a segment once the pen has actually travelled, so that budget is a doodle's worth.
+Saving is streamed through the `ART` report as the gallery walks the sheets, a segment at
+a time, so keeping the pictures costs no additional RAM on either side.

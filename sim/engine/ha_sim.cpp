@@ -1,6 +1,6 @@
 // Hosts the REAL engine (esp32/hotspot-arcade-fw/ha_games.h) off-target.
 //
-// The engine reaches the outside world only through 7 sink functions, which the
+// The engine reaches the outside world only through 8 sink functions, which the
 // firmware implements against AsyncWebServer and the UART. Here they append to an
 // outbox queue instead, and ha_drain() hands it to the harness as JSON. That queue
 // is the fidelity boundary: it carries exactly what the firmware would have sent.
@@ -46,7 +46,7 @@ static std::string esc(const char* s) {
     return o;
 }
 
-// --- the 7 sinks ---------------------------------------------------------------
+// --- the 8 sinks ---------------------------------------------------------------
 // msg/json arguments are already valid JSON objects, so they are spliced in raw
 // rather than escaped into a string. That keeps the drained payload directly
 // usable as structured data on the JS side.
@@ -83,6 +83,12 @@ void haUartEvent(const String& json) {
 
 void haUartRoundResult(const String& json) {
     g_outbox.push_back("{\"to\":\"uart\",\"kind\":\"round\",\"json\":" + json.str() + "}");
+}
+
+void haUartArt(uint8_t op, const String& json) {
+    g_outbox.push_back(
+        "{\"to\":\"uart\",\"kind\":\"art\",\"op\":" + std::to_string((int)op) +
+        ",\"json\":" + json.str() + "}");
 }
 
 // --- exported C API ------------------------------------------------------------

@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41
 #define HA_FW_MAGIC_2 0x52
 #define HA_FW_MAGIC_3 0x43
-#define HA_FW_VERSION 17 // v17: Chess game added
+#define HA_FW_VERSION 18 // v18: Frankendraw game + the ART artwork report
 
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES   0x10
@@ -43,6 +43,13 @@
 #define HA_MSG_ROUND_RESULT 0x84
 #define HA_MSG_EVENT        0x85
 #define HA_MSG_PING         0x86
+#define HA_MSG_ART          0x87 // finished artwork, streamed: op byte + JSON (see HA_ART_*)
+
+// HA_MSG_ART op byte. A completed picture is streamed as BEGIN, one STROKE per line
+// segment, then END, so neither side ever has to hold a whole drawing in RAM.
+#define HA_ART_BEGIN  0 // {"game":..,"id":n,"w0":"A","w1":"B","w2":"C"} — opens a sheet
+#define HA_ART_STROKE 1 // {"p":panel,"x0":..,"y0":..,"x1":..,"y1":..} in 0..255 sheet units
+#define HA_ART_END    2 // {"id":n} — the sheet is complete
 
 // Game ids
 #define HA_GAME_NONE      0
@@ -61,6 +68,9 @@
 #define HA_GAME_SPECTRUM 13 // wavelength-style spectrum guessing (party)
 #define HA_GAME_KMK      14 // kiss marry kill (party)
 #define HA_GAME_CHESS    15 // chess (1v1, full FIDE rules)
+// 16..19 are reserved for games in flight on other branches, so this one starts at
+// 20; the id renumbers trivially if those land first (it is not persisted).
+#define HA_GAME_FRANKENDRAW 20 // exquisite corpse: head/torso/legs by three hands (party)
 
 static inline uint8_t ha_crc8_upd(uint8_t crc, uint8_t b) {
     crc ^= b;

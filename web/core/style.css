@@ -692,3 +692,14 @@ h3{margin:0; font-weight:600}
   font-size:30px; background:var(--surface-2); border:2px solid var(--line);
   border-radius:var(--radius); color:var(--text)}
 .ch-promo-btn:active{border-color:var(--orange); transform:translateY(1px)}
+
+/* Frankendraw: one tall sheet, three folds. The canvas keeps a 2:3 portrait ratio
+   because that is the aspect the saved SVG is written in (see docs/PROTOCOL.md). */
+.fd-canvas{display:block; width:100%; max-width:42vh; aspect-ratio:2/3; margin:8px auto;
+  background:#EDEDE6; border:2px solid var(--line); border-radius:var(--radius);
+  touch-action:none}
+.fd-canvas.drawable{border-color:var(--orange); cursor:crosshair}
+.fd-tools{display:flex; justify-content:space-between; gap:8px}
+.fd-note{text-align:center; color:var(--text-dim); font-size:13px; margin-top:8px; min-height:16px}
+.fd-who{text-align:center; font-weight:800; font-size:15px; margin:6px 0}
+.fd-best{text-align:center; font-weight:800; font-size:17px; color:var(--orange-bright); margin:8px 0}

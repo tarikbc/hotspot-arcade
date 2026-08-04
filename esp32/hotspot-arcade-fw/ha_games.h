@@ -126,6 +126,25 @@ static inline int haUtf8Len(const char* s) {
 #define KMK_GUESS_SECS 30 // guessers' window (safety timer)
 #define KMK_REVEAL_MS 7000
 
+// Frankendraw (exquisite corpse): everyone starts a sheet and draws the head; the
+// sheets then rotate one seat per round so the torso and the legs come from two other
+// hands, and a drawer only ever sees a thin sliver of the panel above theirs.
+//
+// The sheet is a 0..255 square in both axes (FD_UNIT), split into FD_PANELS equal
+// bands of FD_BAND -- 255 = 3 * 85 exactly, so the bands need no rounding. Strokes are
+// stored quantised to those units: four bytes a segment, which is what keeps a whole
+// gallery in a fixed ~10 KB of .bss instead of the heap (see FrankenState).
+#define FD_PANELS 3 // head, torso, legs
+#define FD_UNIT 255 // sheet coordinate range, both axes
+#define FD_BAND 85 // FD_UNIT / FD_PANELS: one panel's height
+#define FD_OVERLAP 7 // sliver of the panel above that the next drawer sees (~8% of a band)
+#define FD_PANEL_STROKES 64 // stored segments per panel; later ink is dropped
+#define FD_MIN_PLAYERS 3 // a sheet has to pass through three different hands
+#define FD_DRAW_SECS 75 // per panel (safety timer; "done" from everyone ends it early)
+#define FD_SHOW_MS 6000 // gallery: how long each finished sheet is shown
+#define FD_VOTE_SECS 30 // favourite-creature vote after the gallery
+#define FD_VOTE_POINTS 100 // per vote, to each of the sheet's three contributors
+
 #define GC_ROUNDS 5
 #define GC_PLAY_SECS 25 // safety deadline per color
 #define GC_REVEAL_MS 6000
@@ -139,6 +158,11 @@ void haUartLeave(uint8_t pid);
 void haUartScore(uint8_t pid, int delta, const char* reason);
 void haUartEvent(const String& json);
 void haUartRoundResult(const String& json);
+// Finished artwork, for the host to keep. Called once with HA_ART_BEGIN, then once per
+// line segment with HA_ART_STROKE, then once with HA_ART_END -- a picture is streamed
+// as it is handed over, never buffered, so this costs the engine no RAM at all. The
+// Flipper turns the stream into one SVG file per sheet on its SD card.
+void haUartArt(uint8_t op, const String& json);
 
 struct Player {
     bool used;
@@ -336,6 +360,42 @@ struct KmkState {
     int gained[HA_MAX_PLAYERS + 1]; // points earned this round (shown on reveal)
 };
 
+// Frankendraw: one line segment of a panel, quantised to the 0..255 sheet grid.
+struct FdStroke {
+    uint8_t x0, y0, x1, y1;
+};
+
+// One sheet: three panels, each drawn by a different player. `who` keeps a copy of the
+// contributor's nickname because a player can disconnect before the gallery runs, and
+// the reveal (and the saved SVG) must still credit them.
+struct FdSheet {
+    uint8_t by[FD_PANELS]; // pid that drew each panel, 0 = nobody did
+    char who[FD_PANELS][HA_NICK_LEN];
+    uint8_t n[FD_PANELS]; // segments stored in each panel
+    FdStroke s[FD_PANELS][FD_PANEL_STROKES];
+};
+
+// Frankendraw state. Sized for the worst case up front (HA_MAX_PLAYERS sheets of
+// FD_PANELS * FD_PANEL_STROKES segments ~= 10 KB) and never grown: the ESP32-S2 has no
+// room for an open-ended per-drawing buffer, so a panel simply stops recording ink once
+// it is full, and finished sheets leave RAM through the artwork sink as they are shown.
+//
+// `seat` freezes the table order when the game starts. In round r (1-based), seat k
+// holds sheet (k + seats - (r-1)) % seats -- one seat of rotation per round, so with
+// seats >= FD_MIN_PLAYERS every sheet passes through three different hands.
+struct FrankenState {
+    Party pt;
+    uint8_t seat[HA_MAX_PLAYERS]; // seat index -> pid, frozen at game start
+    uint8_t seats; // seats == sheets in play
+    FdSheet sheet[HA_MAX_PLAYERS];
+    bool done[HA_MAX_PLAYERS + 1]; // tapped "done" for this panel
+    uint8_t stage; // phase 3: 0 gallery, 1 vote
+    uint8_t show; // gallery: which sheet is on screen
+    int8_t vote[HA_MAX_PLAYERS + 1]; // favourite sheet, -1 = not voted
+    uint8_t best; // winning sheet after the tally
+    uint8_t bestVotes;
+};
+
 struct PongMatch {
     bool used;
     uint8_t a, b; // a = left paddle, b = right paddle
@@ -459,6 +519,7 @@ public:
         spectrumClear();
         kmkClear();
         chessClear();
+        fdClear();
     }
 
     // ---- roster ----
@@ -526,6 +587,7 @@ public:
         spectrumClear();
         kmkClear();
         chessClear();
+        fdClear();
         pushAll();
     }
 
@@ -753,6 +815,8 @@ public:
             kmkClear();
         else if(_active == HA_GAME_CHESS)
             chessClear();
+        else if(_active == HA_GAME_FRANKENDRAW)
+            fdClear();
         pushAll();
     }
 
@@ -779,6 +843,8 @@ public:
             kmkTick(now);
         else if(_active == HA_GAME_CHESS)
             chessTick(now);
+        else if(_active == HA_GAME_FRANKENDRAW)
+            fdTick(now);
     }
 
     // ---- player input (parsed WS JSON) ----
@@ -817,6 +883,7 @@ public:
             gcReady(pid, r);
             spectrumReady(pid, r);
             kmkReady(pid, r);
+            fdReady(pid, r);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "topic", &v)) {
             triviaVote(pid, v);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "pack", &v)) {
@@ -824,6 +891,8 @@ public:
             scrambleVote(pid, v);
             spectrumVote(pid, v);
             kmkVote(pid, v);
+        } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "sheet", &v)) {
+            fdVote(pid, v);
         } else if(strcmp(type, "tap") == 0) {
             reactTap(pid);
         } else if(strcmp(type, "clue") == 0) {
@@ -845,6 +914,7 @@ public:
             gcAgain(pid);
             spectrumAgain(pid);
             kmkAgain(pid);
+            fdAgain(pid);
         } else if(strcmp(type, "say") == 0) {
             char t[120];
             if(ha_json_str(json, "text", t, sizeof(t))) onSay(pid, t);
@@ -894,8 +964,12 @@ public:
             }
         } else if(strcmp(type, "stroke") == 0) {
             drawStroke(pid, json);
+            fdStroke(pid, json);
         } else if(strcmp(type, "clear") == 0) {
             drawClearInk(pid);
+            fdClearPanel(pid);
+        } else if(strcmp(type, "done") == 0) {
+            fdDone(pid);
         } else if(strcmp(type, "leaveGame") == 0) {
             anyOnLeave(pid);
             pushAll();
@@ -923,6 +997,7 @@ private:
     SpectrumState _spec = {};
     KmkState _kmk = {};
     ChessMatch _cm[CHESS_MAX] = {};
+    FrankenState _fd = {};
 
     uint8_t freePid() {
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
@@ -966,6 +1041,8 @@ private:
                 haWsSendWs(_p[pid].wsId, kmkJson(pid));
             else if(_active == HA_GAME_CHESS)
                 haWsSendWs(_p[pid].wsId, chessJson(pid));
+            else if(_active == HA_GAME_FRANKENDRAW)
+                haWsSendWs(_p[pid].wsId, fdJson(pid));
         }
     }
 
@@ -1026,6 +1103,8 @@ private:
             return "kmk";
         case HA_GAME_CHESS:
             return "chess";
+        case HA_GAME_FRANKENDRAW:
+            return "frankendraw";
         default:
             return "none";
         }
@@ -1512,6 +1591,7 @@ private:
         pongOnLeave(pid);
         battleOnLeave(pid);
         chessOnLeave(pid);
+        fdOnLeave(pid);
     }
 
     void duelCancel(uint8_t pid) {
@@ -2350,6 +2430,8 @@ private:
             spectrumCheckStart();
         else if(_active == HA_GAME_KMK)
             kmkCheckStart();
+        else if(_active == HA_GAME_FRANKENDRAW)
+            fdCheckStart();
     }
 
     // ---------- would you rather (live A/B poll) ----------
@@ -4642,5 +4724,438 @@ private:
         }
         s += ",\"scores\":" + playersJson() + "}";
         return s;
+    }
+
+    // ---------- Frankendraw (exquisite corpse: head / torso / legs) ----------
+    // Rotation rule. `seat` freezes the table when the game starts (everyone connected
+    // at that moment, in pid order) and is never re-filled. In round r seat k holds
+    // sheet (k + seats - (r-1)) % seats, so every sheet moves one seat per round and,
+    // with seats >= FD_MIN_PLAYERS, is drawn by three different players.
+    //  - Joining mid-game: no seat, so nothing to draw on; the new player watches and
+    //    plays from the next game (fdJson sends them "wait").
+    //  - Leaving mid-game: the sheet in their hands is NOT reassigned. Everyone still
+    //    at the table is already holding a sheet of their own, so handing it on would
+    //    mean giving somebody two panels to draw at once. The sheet just rotates on to
+    //    its next scheduled holder as if the round had happened, which keeps every
+    //    other sheet's schedule -- and the "three different hands" guarantee for them
+    //    -- intact. A panel is credited to whoever was holding it when the round
+    //    started (so a drawer who quits halfway still gets their ink and their name),
+    //    and stays blank and uncredited if that seat was already empty.
+    void fdClear() {
+        partyClear(_fd.pt);
+        _fd.seats = 0;
+        _fd.stage = 0;
+        _fd.show = 0;
+        _fd.best = 0;
+        _fd.bestVotes = 0;
+        for(int i = 0; i < HA_MAX_PLAYERS; i++) {
+            _fd.seat[i] = 0;
+            _fd.sheet[i] = FdSheet{};
+        }
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _fd.done[i] = false;
+            _fd.vote[i] = -1;
+        }
+    }
+
+    void fdReady(uint8_t pid, bool val) {
+        if(_active != HA_GAME_FRANKENDRAW) return;
+        if(_fd.pt.phase != 0 && _fd.pt.phase != 4) return;
+        if(_fd.pt.phase == 4 && val) fdClear();
+        _fd.pt.ready[pid] = val;
+        fdCheckStart();
+        pushAll();
+    }
+
+    // Needs three players, not two: with only two seats a sheet would come straight
+    // back to the player who drew its head.
+    void fdCheckStart() {
+        Party& pt = _fd.pt;
+        bool enough = connectedCount() >= FD_MIN_PLAYERS;
+        if(pt.phase == 0 && enough && partyAllReady(pt)) {
+            pt.phase = 1;
+            pt.countdownEnd = millis() + (uint32_t)PARTY_COUNTDOWN * 1000;
+            pt.lastSec = -1;
+        } else if(pt.phase == 1 && (!enough || !partyAllReady(pt))) {
+            pt.phase = 0;
+        }
+    }
+
+    int fdSeatOf(uint8_t pid) {
+        for(int k = 0; k < _fd.seats; k++)
+            if(_fd.seat[k] == pid) return k;
+        return -1;
+    }
+
+    // Which sheet seat k holds this round (the rotation rule above).
+    int fdSheetAt(int seatIdx) {
+        if(_fd.seats <= 0) return -1;
+        int r = _fd.pt.round < 1 ? 1 : _fd.pt.round;
+        return (seatIdx + _fd.seats - ((r - 1) % _fd.seats)) % _fd.seats;
+    }
+
+    // The sheet `pid` is drawing on this round, or -1 if they have no seat.
+    int fdSheetOf(uint8_t pid) {
+        int k = fdSeatOf(pid);
+        return k < 0 ? -1 : fdSheetAt(k);
+    }
+
+    static int fdTop(int panel) { return panel * FD_BAND; }
+    static int fdBot(int panel) { return panel * FD_BAND + FD_BAND; }
+
+    void fdBegin(uint32_t now) {
+        _fd.seats = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _fd.seats < HA_MAX_PLAYERS) _fd.seat[_fd.seats++] = i;
+        for(int i = 0; i < HA_MAX_PLAYERS; i++) _fd.sheet[i] = FdSheet{};
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _fd.vote[i] = -1;
+        resetScoresAll();
+        _fd.pt.round = 0;
+        _fd.pt.roundsTotal = FD_PANELS;
+        fdNextRound(now);
+    }
+
+    void fdNextRound(uint32_t now) {
+        Party& pt = _fd.pt;
+        if(pt.round >= FD_PANELS || _fd.seats < FD_MIN_PLAYERS) {
+            fdGalleryStart(now);
+            return;
+        }
+        pt.round++;
+        int panel = pt.round - 1;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _fd.done[i] = false;
+        // Credit the panel when it is handed out, not when ink arrives: a drawer who
+        // disconnects halfway through still contributed what they drew, and their nick
+        // is copied because their Player slot is gone by the time the gallery runs.
+        for(int k = 0; k < _fd.seats; k++) {
+            uint8_t pid = _fd.seat[k];
+            int s = fdSheetAt(k);
+            if(s < 0 || !pid || !_p[pid].used) continue;
+            _fd.sheet[s].by[panel] = pid;
+            strlcpy(_fd.sheet[s].who[panel], _p[pid].nick, HA_NICK_LEN);
+        }
+        pt.deadline = now + (uint32_t)FD_DRAW_SECS * 1000;
+        pt.phase = 2;
+        pushAll();
+        haUartEvent(String("{\"draw\":\"frankendraw panel ") + pt.round + "/" + FD_PANELS + "\"}");
+    }
+
+    // One normalised 0..1 wire coordinate, quantised onto the 0..FD_UNIT sheet grid.
+    static bool fdCoord(const char* json, const char* key, int& out) {
+        char num[16];
+        if(!jsonNum(json, key, num, sizeof(num))) return false;
+        double v = atof(num);
+        if(v < 0) v = 0;
+        if(v > 1) v = 1;
+        out = (int)(v * (double)FD_UNIT + 0.5);
+        if(out < 0) out = 0;
+        if(out > FD_UNIT) out = FD_UNIT;
+        return true;
+    }
+
+    // A drawer's segment. Nothing is relayed to anybody: every player is drawing their
+    // own sheet at the same time, and ink only becomes visible (as a sliver, then in the
+    // gallery) when the server decides it may. Endpoints are clamped into the drawer's
+    // own band, so a stroke can never spill into a panel they do not own.
+    void fdStroke(uint8_t pid, const char* json) {
+        if(_active != HA_GAME_FRANKENDRAW || _fd.pt.phase != 2) return;
+        int s = fdSheetOf(pid);
+        if(s < 0 || _fd.done[pid]) return;
+        int panel = _fd.pt.round - 1;
+        FdSheet& sh = _fd.sheet[s];
+        if(sh.n[panel] >= FD_PANEL_STROKES) return; // panel full: later ink is dropped
+        int c[4];
+        static const char* keys[4] = {"x0", "y0", "x1", "y1"};
+        for(int i = 0; i < 4; i++)
+            if(!fdCoord(json, keys[i], c[i])) return;
+        int top = fdTop(panel), bot = fdBot(panel);
+        for(int i = 1; i < 4; i += 2) { // y0, y1
+            if(c[i] < top) c[i] = top;
+            if(c[i] > bot) c[i] = bot;
+        }
+        FdStroke& st = sh.s[panel][sh.n[panel]++];
+        st.x0 = (uint8_t)c[0];
+        st.y0 = (uint8_t)c[1];
+        st.x1 = (uint8_t)c[2];
+        st.y1 = (uint8_t)c[3];
+    }
+
+    // "Clear" wipes only your own panel of the sheet you are holding.
+    void fdClearPanel(uint8_t pid) {
+        if(_active != HA_GAME_FRANKENDRAW || _fd.pt.phase != 2) return;
+        int s = fdSheetOf(pid);
+        if(s < 0 || _fd.done[pid]) return;
+        _fd.sheet[s].n[_fd.pt.round - 1] = 0;
+    }
+
+    // Everyone still at the table has tapped done. A seat whose player left is not
+    // waited for -- otherwise one disconnect would stall the panel until its timer.
+    bool fdAllDone() {
+        int drawing = 0;
+        for(int k = 0; k < _fd.seats; k++) {
+            uint8_t pid = _fd.seat[k];
+            if(!pid || !_p[pid].used) continue;
+            drawing++;
+            if(!_fd.done[pid]) return false;
+        }
+        return drawing >= 1;
+    }
+
+    int fdWaiting() {
+        int n = 0;
+        for(int k = 0; k < _fd.seats; k++) {
+            uint8_t pid = _fd.seat[k];
+            if(pid && _p[pid].used && !_fd.done[pid]) n++;
+        }
+        return n;
+    }
+
+    // A player left. Vacate their seat rather than just noticing that their Player slot
+    // is gone: pids are recycled, so the next person to join would otherwise inherit the
+    // seat, the sheet in its hands, and the credit line already written for the panel.
+    // The seat stays empty for the rest of the game (see the rotation rule above) and
+    // the newcomer waits for the next one.
+    void fdOnLeave(uint8_t pid) {
+        if(!pid) return;
+        for(int k = 0; k < _fd.seats; k++)
+            if(_fd.seat[k] == pid) _fd.seat[k] = 0;
+        _fd.done[pid] = false;
+        _fd.vote[pid] = -1;
+    }
+
+    void fdDone(uint8_t pid) {
+        if(_active != HA_GAME_FRANKENDRAW || _fd.pt.phase != 2) return;
+        if(fdSheetOf(pid) < 0) return;
+        _fd.done[pid] = true;
+        if(fdAllDone())
+            fdNextRound(millis());
+        else
+            pushAll();
+    }
+
+    void fdGalleryStart(uint32_t now) {
+        _fd.stage = 0;
+        _fd.show = 0;
+        if(_fd.seats == 0) { // never got going: nothing to show
+            _fd.pt.phase = 4;
+            pushAll();
+            return;
+        }
+        _fd.pt.phase = 3;
+        _fd.pt.revealUntil = now + FD_SHOW_MS;
+        fdSaveSheet(0);
+        pushAll();
+    }
+
+    void fdGalleryStep(uint32_t now) {
+        if(_fd.show + 1 < _fd.seats) {
+            _fd.show++;
+            _fd.pt.revealUntil = now + FD_SHOW_MS;
+            fdSaveSheet(_fd.show);
+            pushAll();
+            return;
+        }
+        _fd.stage = 1; // every creature seen: now pick a favourite
+        _fd.pt.deadline = now + (uint32_t)FD_VOTE_SECS * 1000;
+        pushAll();
+    }
+
+    // Hand one finished sheet to the host as it comes up in the gallery: begin, a call
+    // per segment, end. Each segment is formatted, sent and forgotten, so saving a whole
+    // gallery costs one String at a time however many sheets there are.
+    void fdSaveSheet(uint8_t s) {
+        if(s >= _fd.seats) return;
+        FdSheet& sh = _fd.sheet[s];
+        // Flat "w0".."w2" rather than a who[] array: the Flipper's JSON helper only
+        // reads flat objects, and this keeps the host side a plain key lookup.
+        String head = String("{\"game\":\"frankendraw\",\"id\":") + (int)s;
+        for(int p = 0; p < FD_PANELS; p++)
+            head += String(",\"w") + p + "\":\"" + ha_json_escape(sh.who[p]) + "\"";
+        haUartArt(HA_ART_BEGIN, head + "}");
+        for(int p = 0; p < FD_PANELS; p++)
+            for(int i = 0; i < sh.n[p]; i++) {
+                FdStroke& st = sh.s[p][i];
+                haUartArt(
+                    HA_ART_STROKE,
+                    String("{\"p\":") + p + ",\"x0\":" + (int)st.x0 + ",\"y0\":" + (int)st.y0 +
+                        ",\"x1\":" + (int)st.x1 + ",\"y1\":" + (int)st.y1 + "}");
+            }
+        haUartArt(HA_ART_END, String("{\"id\":") + (int)s + "}");
+    }
+
+    void fdVote(uint8_t pid, int sheet) {
+        if(_active != HA_GAME_FRANKENDRAW || _fd.pt.phase != 3) return;
+        if(sheet < 0 || sheet >= _fd.seats) return;
+        _fd.vote[pid] = (int8_t)sheet;
+        if(_fd.stage == 1 && fdAllVoted())
+            fdTally(); // everyone has picked: don't sit on the vote timer
+        else
+            pushAll();
+    }
+
+    bool fdAllVoted() {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used) continue;
+            n++;
+            if(_fd.vote[i] < 0) return false;
+        }
+        return n >= 1;
+    }
+
+    int fdVotesFor(int s) {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _fd.vote[i] == s) n++;
+        return n;
+    }
+
+    // Scoring. The game has no winner of its own, so the ending is the vote: every vote
+    // pays FD_VOTE_POINTS to each of that sheet's three contributors, and the sheet with
+    // the most votes is crowned on the final screen. With exactly three players every
+    // sheet has the same three contributors, so the podium is flat by construction and
+    // the crowned creature is the whole result -- the honest outcome for a game where
+    // everybody drew on everything.
+    void fdTally() {
+        _fd.best = 0;
+        _fd.bestVotes = 0;
+        for(int s = 0; s < _fd.seats; s++) {
+            int v = fdVotesFor(s);
+            if(v > (int)_fd.bestVotes) {
+                _fd.bestVotes = (uint8_t)v;
+                _fd.best = (uint8_t)s;
+            }
+            if(!v) continue;
+            for(int p = 0; p < FD_PANELS; p++) {
+                uint8_t pid = _fd.sheet[s].by[p];
+                if(!pid || !_p[pid].used) continue;
+                _p[pid].score += v * FD_VOTE_POINTS;
+                haUartScore(pid, v * FD_VOTE_POINTS, "frankendraw");
+            }
+        }
+        haUartRoundResult(
+            String("{\"frankendraw\":\"sheet ") + (int)(_fd.best + 1) + " wins, " +
+            (int)_fd.bestVotes + " votes\"}");
+        _fd.pt.phase = 4;
+        pushAll();
+    }
+
+    void fdAgain(uint8_t pid) {
+        (void)pid;
+        if(_active != HA_GAME_FRANKENDRAW || _fd.pt.phase != 4) return;
+        fdClear();
+        pushAll();
+    }
+
+    void fdTick(uint32_t now) {
+        Party& pt = _fd.pt;
+        if(pt.phase == 1) {
+            if(partyCountdownDone(pt, now)) fdBegin(now);
+        } else if(pt.phase == 2) {
+            if(connectedCount() == 0) { // room emptied: drop the game and its ink
+                fdClear();
+                return;
+            }
+            if((int32_t)(now - pt.deadline) >= 0 || fdAllDone()) fdNextRound(now);
+        } else if(pt.phase == 3) {
+            if(_fd.stage == 0) {
+                if((int32_t)(now - pt.revealUntil) >= 0) fdGalleryStep(now);
+            } else if((int32_t)(now - pt.deadline) >= 0 || fdAllVoted()) {
+                fdTally();
+            }
+        }
+    }
+
+    String fdWhoJson(int s) {
+        String o = "[";
+        for(int p = 0; p < FD_PANELS; p++) {
+            if(p) o += ",";
+            o += String("\"") + ha_json_escape(_fd.sheet[s].who[p]) + "\"";
+        }
+        o += "]";
+        return o;
+    }
+
+    // One panel as a flat [x0,y0,x1,y1, ...] array in sheet grid units. With fromY > 0
+    // only segments lying ENTIRELY at or below that line are emitted: a segment that
+    // merely dips into the sliver would drag its other end -- above the line, in the
+    // part the next drawer must not see -- along with it.
+    String fdInkJson(FdSheet& sh, int panel, int fromY) {
+        String o = "[";
+        bool first = true;
+        for(int i = 0; i < sh.n[panel]; i++) {
+            FdStroke& st = sh.s[panel][i];
+            if(st.y0 < fromY || st.y1 < fromY) continue;
+            if(!first) o += ",";
+            first = false;
+            o += String((int)st.x0) + "," + (int)st.y0 + "," + (int)st.x1 + "," + (int)st.y1;
+        }
+        o += "]";
+        return o;
+    }
+
+    String fdJson(uint8_t pid) {
+        Party& pt = _fd.pt;
+        if(pt.phase == 0)
+            return String("{\"t\":\"frankendraw\",\"phase\":\"lobby\",\"you\":") + pid +
+                   ",\"need\":" + FD_MIN_PLAYERS + ",\"players\":" + partyPlayersJson(pt) + "}";
+        if(pt.phase == 1)
+            return String("{\"t\":\"frankendraw\",\"phase\":\"countdown\",\"sec\":") +
+                   partyCountdownSec(pt) + "}";
+        if(pt.phase == 4)
+            return String("{\"t\":\"frankendraw\",\"phase\":\"final\",\"best\":") + (int)_fd.best +
+                   ",\"votes\":" + (int)_fd.bestVotes + ",\"who\":" + fdWhoJson(_fd.best) +
+                   ",\"board\":" + triviaBoard() + "}";
+
+        if(pt.phase == 2) {
+            int panel = pt.round - 1;
+            int s = fdSheetOf(pid);
+            String o = String("{\"t\":\"frankendraw\",\"phase\":\"draw\",\"round\":") + pt.round +
+                       ",\"rounds\":" + FD_PANELS + ",\"unit\":" + FD_UNIT + ",\"band\":" + FD_BAND +
+                       ",\"over\":" + FD_OVERLAP;
+            if(s < 0) {
+                o += ",\"panel\":-1,\"wait\":true"; // joined mid-game: no seat this time
+            } else {
+                o += String(",\"panel\":") + panel + ",\"top\":" + fdTop(panel) + ",\"bot\":" +
+                     fdBot(panel) + ",\"sheet\":" + s + ",\"done\":" +
+                     (_fd.done[pid] ? "true" : "false");
+                o += String(",\"waiting\":") + fdWaiting();
+                // The only ink a drawer is entitled to: the bottom FD_OVERLAP units of
+                // the panel directly above theirs, on the sheet now in their hands. Their
+                // own strokes are not echoed back (the client already drew them), and no
+                // other panel -- and no other sheet -- is ever serialised here.
+                o += ",\"ink\":";
+                o += panel > 0 ? fdInkJson(_fd.sheet[s], panel - 1, fdTop(panel) - FD_OVERLAP) :
+                                 String("[]");
+            }
+            o += ",\"deadline\":" + String(pt.deadline);
+            o += String(",\"dur\":") + FD_DRAW_SECS + ",\"scores\":" + playersJson() + "}";
+            return o;
+        }
+
+        if(_fd.stage == 0) { // gallery: one finished creature at a time, for everyone
+            FdSheet& sh = _fd.sheet[_fd.show];
+            String o = String("{\"t\":\"frankendraw\",\"phase\":\"show\",\"n\":") + (int)_fd.show +
+                       ",\"total\":" + (int)_fd.seats + ",\"unit\":" + FD_UNIT + ",\"band\":" +
+                       FD_BAND + ",\"who\":" + fdWhoJson(_fd.show) + ",\"ink\":[";
+            for(int p = 0; p < FD_PANELS; p++) {
+                if(p) o += ",";
+                o += fdInkJson(sh, p, 0);
+            }
+            o += String("],\"mine\":") + (int)_fd.vote[pid] + ",\"deadline\":" +
+                 String(pt.revealUntil);
+            o += String(",\"dur\":") + (FD_SHOW_MS / 1000) + "}";
+            return o;
+        }
+
+        String o = "{\"t\":\"frankendraw\",\"phase\":\"vote\",\"sheets\":[";
+        for(int s = 0; s < _fd.seats; s++) {
+            if(s) o += ",";
+            o += String("{\"n\":") + s + ",\"who\":" + fdWhoJson(s) + ",\"votes\":" +
+                 fdVotesFor(s) + "}";
+        }
+        o += String("],\"mine\":") + (int)_fd.vote[pid] + ",\"deadline\":" + String(pt.deadline);
+        o += String(",\"dur\":") + FD_VOTE_SECS + "}";
+        return o;
     }
 };

@@ -15,7 +15,7 @@ const GAMES = [
   ["Dots & Boxes", 4], ["Draw & Guess", 5], ["Pong", 6], ["Reaction Duel", 7],
   ["Would You Rather", 8], ["Word Scramble", 9], ["Reversi", 10],
   ["Guess the Color", 11], ["Battleship", 12], ["Spectrum", 13],
-  ["Kiss Marry Kill", 14], ["Chess", 15],
+  ["Kiss Marry Kill", 14], ["Chess", 15], ["Frankendraw", 20],
 ];
 
 const players = new Map(); // pid -> { nick, score }
@@ -55,6 +55,10 @@ subscribeUart((it) => {
     feed.push(`SCORE ${it.pid} ${it.delta > 0 ? "+" : ""}${it.delta} (${it.reason})`);
   } else if (it.kind === "event") feed.push(`EVENT ${JSON.stringify(it.json)}`);
   else if (it.kind === "round") feed.push(`ROUND ${JSON.stringify(it.json)}`);
+  // Frankendraw artwork. The real host writes an SVG per sheet; here we just note the
+  // sheet boundaries -- one line per segment would drown the feed.
+  else if (it.kind === "art" && it.op === 0) feed.push(`ART begin sheet ${it.json.id}`);
+  else if (it.kind === "art" && it.op === 2) feed.push(`ART end sheet ${it.json.id}`);
   render();
 });
 

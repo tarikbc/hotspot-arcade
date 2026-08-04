@@ -4,6 +4,25 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Frankendraw**, a 16th game (whole-group, id `20`): the exquisite-corpse drawing
+  game. Everyone starts a sheet and draws a head; the sheets rotate one seat a round so
+  the torso and the legs are drawn by two other players, and the only thing a drawer
+  ever sees of the panel above theirs is a thin overlap sliver — enforced in the
+  per-player serializer, not the client. Everyone draws at once behind a 75-second
+  timer that ends early once all have tapped Done. The finished creatures are revealed
+  one at a time with their three authors named, then everyone votes a favourite, which
+  is what puts points on the board. Needs three players; no content packs. Firmware
+  **v18**.
+- A **finished-artwork sink** (`haUartArt`) and its UART report `ART` (`0x87`): a
+  completed sheet is streamed to the host as begin / one frame per line segment / end,
+  so neither the ESP nor the Flipper ever buffers a drawing. The Flipper writes each
+  sheet straight out as an **SVG** under `/ext/apps_data/hotspot_arcade/art/`, one file
+  per creature, named so a session's set groups together.
+
 ## [1.6.0] - 2026-08-03
 
 Chess joins as the fifteenth game. Firmware **v17**.

@@ -481,6 +481,48 @@
   </div>
 </section>
 
+<!-- 17. Frankendraw — exquisite corpse: head, torso, legs, three different hands. -->
+<section id="fd" class="screen hide">
+  <div id="fd-lobby" class="hide">
+    <header class="bar"><h2 data-i18n="fd.title">Frankendraw</h2><span id="fd-me" class="me"></span></header>
+    <p class="sub" data-i18n="fd.how">Head, torso, legs — each drawn by someone else.</p>
+    <ul id="fd-players" class="players"></ul>
+    <button id="fd-ready" class="btn big" data-i18n="common.ready">I'm ready</button>
+    <div id="fd-need" class="fd-note"></div>
+  </div>
+  <div id="fd-count" class="hide count">
+    <div class="count-topic" data-i18n="fd.count_topic">Frankendraw</div>
+    <div id="fd-count-num" class="count-num">3</div>
+    <div class="sub" data-i18n="common.starting">Starting</div>
+  </div>
+  <div id="fd-play" class="hide">
+    <div class="bar"><span id="fd-meta" class="me"></span><span id="fd-role" class="me"></span></div>
+    <div id="fd-bar" class="timebar hide"><i></i></div>
+    <canvas id="fd-canvas" class="fd-canvas"></canvas>
+    <div id="fd-tools" class="fd-tools">
+      <button id="fd-clear" class="btn ghost sm" data-i18n="fd.clear">Clear</button>
+      <button id="fd-done" class="btn sm" data-i18n="fd.done">Done</button>
+    </div>
+    <div id="fd-note" class="fd-note"></div>
+  </div>
+  <div id="fd-show" class="hide">
+    <div class="bar"><span id="fd-show-meta" class="me"></span></div>
+    <canvas id="fd-gallery" class="fd-canvas"></canvas>
+    <div id="fd-who" class="fd-who"></div>
+    <button id="fd-fav" class="btn big" data-i18n="fd.vote_this">Vote for this one</button>
+  </div>
+  <div id="fd-vote" class="hide">
+    <header class="bar"><h2 data-i18n="fd.pick_fav">Pick your favourite</h2></header>
+    <div id="fd-sheets" class="topics"></div>
+  </div>
+  <div id="fd-final" class="hide">
+    <header class="bar"><h2 data-i18n="common.final">Final</h2></header>
+    <div id="fd-best" class="fd-best"></div>
+    <ol id="fd-podium" class="podium"></ol>
+    <button id="fd-again" class="btn big" data-i18n="common.play_again">Play again</button>
+  </div>
+</section>
+
 <!-- Emoji reactions: floating layer + a corner button that opens the emoji row -->
 <div id="react-layer" class="react-layer" aria-hidden="true"></div>
 <div id="react-bar" class="react-bar hide">

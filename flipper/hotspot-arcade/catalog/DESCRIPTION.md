@@ -26,12 +26,14 @@ the list — or flash it from a computer with esptool.
 its bundled firmware and game files to the SD card. The hourglass is the loader working,
 not a hang. Every launch after that is instant.
 
-## Fifteen games
+## Sixteen games
 
 - **Whole-group:** Trivia, Would You Rather, Word Scramble, Reaction Duel, Guess the
   Color (match a swatch's RGB, closest and fastest wins), Spectrum (a Wavelength-style
   game: one player clues a hidden point on a spectrum, everyone else guesses), and Kiss
-  Marry Kill (a chooser secretly labels three people, everyone predicts it) — everyone in
+  Marry Kill (a chooser secretly labels three people, everyone predicts it), and
+  Frankendraw (the exquisite-corpse drawing game: head, torso and legs by three different
+  hands, and the finished creatures are saved to the SD card as SVG) — everyone in
   the room plays at once, with a ready-up lobby and a live leaderboard.
 - **1v1 duels:** Connect Four, Tic-Tac-Toe, Dots & Boxes, Reversi/Othello, real-time Pong,
   Battleship (place a hidden fleet, then fire), and Chess (full FIDE rules, 5-minute blitz
