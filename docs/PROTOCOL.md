@@ -417,3 +417,65 @@ moment either side plays a move.
 State is pushed only on events — a move, resign, draw, claim, or a flag fall the ESP
 notices on its own clock tick — never on a periodic heartbeat; clients animate the
 countdown locally between pushes from `deadline`.
+
+## 10. Werewolf (`werewolf`) — game id `18`
+
+A whole-group party game on the shared party skeleton (ready-up lobby, countdown), but with
+no content packs — the roles are code. Select with UART `SELECT_GAME` id `18`; lobby `game`
+string `"werewolf"`. Firmware **v18**. Needs **5 players** minimum; the countdown does not
+arm below that.
+
+The phones referee, they do not carry the conversation: players argue out loud in the room
+and only the secret actions and the vote go through the phone.
+
+**Roles** are dealt over a shuffled roster when the countdown ends: `2` = werewolf (about
+one per four players, at least one, capped at `(n-1)/2`), `3` = seer (exactly one), `1` =
+villager (everyone else). `0` means "not in this game" — a spectator, i.e. someone who
+joined mid-game or whose pid was vacated by a leaver.
+
+**Phases.** `phase` is `"lobby"` / `"countdown"` / `"play"` / `"final"`; play is subdivided
+by `stage`, which cycles:
+
+| stage | window | what happens |
+| --- | --- | --- |
+| `roles` | 12 s | each phone privately shows its own role; werewolves also see the pack |
+| `night` | 45 s | werewolves each tap a victim, the seer taps one player to check |
+| `dawn` | 8 s | the night's victim (if any) is announced, role revealed |
+| `day` | 90 s | every living player accuses someone; the tally is public |
+| `dusk` | 8 s | the player voted out (if any) is announced, role revealed |
+
+Night and day resolve early once every living actor has acted; otherwise the window simply
+expires and anyone who did not act is skipped. Both ballots use the same rule: **most votes
+wins, ties are broken uniformly at random, and an empty ballot means nothing happens** (no
+victim / nobody voted out). A werewolf may only target a living non-werewolf; nobody may
+accuse themselves.
+
+**Winning.** Villagers win when the last werewolf is out; werewolves win as soon as they are
+no longer outnumbered (`wolves >= villagers`). The check also runs on every roster change, so
+the last werewolf disconnecting is a village win. **Each player still alive on the winning
+side scores 1**, reported over UART `SCORE` with reason `werewolf`.
+
+**Secrecy is enforced server-side.** Roles live only on the ESP and leave it through one
+serializer, which asks a single predicate about every player it emits: you always see your
+own role, werewolves see each other, a dead player's role is public, and at the final every
+role opens up. A role a phone is not entitled to is simply absent from the bytes it receives
+— there is nothing for a client to hide.
+
+Client intents: `ready`, `kill{n}` (living werewolves, night stage, `n` = victim pid),
+`see{n}` (the seer, night stage, one reading per night), `accuse{n}` (living players with a
+role, day stage), `again`.
+
+Server `{t:"werewolf",phase,...}`:
+- `"lobby"`: `you`, `players` (nick/avatar/ready), `min` (5), `enough`.
+- `"countdown"`: `sec`.
+- `"play"`: `stage`, `you`, `day` (night/day number), `myrole`, `alive`, `wolvesleft`,
+  `villagersleft`, `deadline`/`dur`, and `players` — each entry `pid`, `nick`, `avatar`,
+  `in` (holds a role), `alive`, and **`role` only when this viewer may see it**.
+  - `mykill` + `packvotes` (`by`/`pid`) are sent **only to living werewolves in the night
+    stage** — a villager's payload carries no trace that a night vote happened.
+  - `check` (`pid`/`nick`/`wolf`) is sent **only to the seer**, from the moment they look
+    until the next night falls.
+  - `dawn` adds `victim` (pid, `0` = nobody died); `dusk` adds `lynched` (pid, `0` = no
+    votes); `day` adds the public `myvote` and `votes` (`by`/`pid`).
+- `"final"`: `winner` (`"villagers"` | `"wolves"`), `myrole`, `players` with every role
+  revealed, and `board` (the shared leaderboard).

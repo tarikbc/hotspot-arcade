@@ -481,6 +481,40 @@
   </div>
 </section>
 
+<!-- 17. Werewolf: hidden roles dealt by the ESP, night/day phases on timers. The
+     phone only ever renders what the server told THIS player; nothing about
+     another player's role is inferred here. -->
+<section id="werewolf" class="screen hide">
+  <div id="ww-lobby" class="hide">
+    <header class="bar"><h2 data-i18n="werewolf.title">Werewolf</h2><span id="ww-me" class="me"></span></header>
+    <ul id="ww-players" class="players"></ul>
+    <p id="ww-need" class="sub"></p>
+    <button id="ww-ready" class="btn big" data-i18n="common.ready">I'm ready</button>
+    <p class="sub" data-i18n="werewolf.blurb">Roles are secret. Talk it out loud, vote on the phone.</p>
+  </div>
+  <div id="ww-count" class="hide count">
+    <div class="count-topic" data-i18n="werewolf.count_topic">Werewolf</div>
+    <div id="ww-count-num" class="count-num">3</div>
+    <div class="sub" data-i18n="common.starting">Starting</div>
+  </div>
+  <div id="ww-play" class="hide">
+    <div class="bar"><span id="ww-meta" class="me"></span><span id="ww-role" class="me"></span></div>
+    <div id="ww-bar" class="timebar hide"><i></i></div>
+    <div id="ww-banner" class="ww-banner"></div>
+    <div id="ww-check" class="ww-check hide"></div>
+    <div id="ww-note" class="ww-note"></div>
+    <div id="ww-list" class="ww-list"></div>
+    <div id="ww-counts" class="ww-counts"></div>
+  </div>
+  <div id="ww-final" class="hide">
+    <header class="bar"><h2 data-i18n="common.final">Final</h2></header>
+    <div id="ww-winner" class="ww-winner"></div>
+    <div id="ww-roles" class="ww-list"></div>
+    <ol id="ww-podium" class="podium"></ol>
+    <button id="ww-again" class="btn big" data-i18n="common.play_again">Play again</button>
+  </div>
+</section>
+
 <!-- Emoji reactions: floating layer + a corner button that opens the emoji row -->
 <div id="react-layer" class="react-layer" aria-hidden="true"></div>
 <div id="react-bar" class="react-bar hide">

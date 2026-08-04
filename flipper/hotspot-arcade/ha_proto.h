@@ -16,7 +16,7 @@
 #define HA_FW_MAGIC_1 0x41
 #define HA_FW_MAGIC_2 0x52
 #define HA_FW_MAGIC_3 0x43
-#define HA_FW_VERSION 17 // v17: Chess game added
+#define HA_FW_VERSION 18 // v18: Werewolf game added
 
 // Flipper -> ESP
 #define HA_MSG_CLEAR_FILES   0x10
@@ -61,6 +61,9 @@
 #define HA_GAME_SPECTRUM 13 // wavelength-style spectrum guessing (party)
 #define HA_GAME_KMK      14 // kiss marry kill (party)
 #define HA_GAME_CHESS    15 // chess (1v1, full FIDE rules)
+// 16 and 17 are reserved for two games in flight on other branches; this game is
+// trivially renumbered down if either lands after it.
+#define HA_GAME_WEREWOLF 18 // werewolf (party, hidden roles + night/day phases)
 
 static inline uint8_t ha_crc8_upd(uint8_t crc, uint8_t b) {
     crc ^= b;

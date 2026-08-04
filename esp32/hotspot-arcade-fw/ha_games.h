@@ -126,6 +126,27 @@ static inline int haUtf8Len(const char* s) {
 #define KMK_GUESS_SECS 30 // guessers' window (safety timer)
 #define KMK_REVEAL_MS 7000
 
+// Werewolf: hidden-role social deduction. Roles are dealt at the start and live
+// only on the ESP; the per-player serializer is what keeps them secret, so read
+// wwJson() as the rulebook for who may know what. Phases run themselves on
+// timers, so one distracted player can never stall the room -- anyone who does
+// not act inside the window is simply skipped.
+#define WW_MIN_PLAYERS 5 // fewer than this and the roles don't work
+#define WW_ROLES_SECS 12 // private "here is your role" window before night 1
+#define WW_NIGHT_SECS 45 // werewolves pick a victim, the seer checks someone
+#define WW_DAY_SECS 90 // everyone accuses someone
+#define WW_ANNOUNCE_MS 8000 // dawn (night result) / dusk (vote result) pause
+// Roles. 0 = not in this game (joined mid-game, or left): a spectator.
+#define WW_VILLAGER 1
+#define WW_WOLF 2
+#define WW_SEER 3
+// Sub-phases inside Party::phase 2 (playing).
+#define WW_S_ROLES 0
+#define WW_S_NIGHT 1
+#define WW_S_DAWN 2
+#define WW_S_DAY 3
+#define WW_S_DUSK 4
+
 #define GC_ROUNDS 5
 #define GC_PLAY_SECS 25 // safety deadline per color
 #define GC_REVEAL_MS 6000
@@ -336,6 +357,31 @@ struct KmkState {
     int gained[HA_MAX_PLAYERS + 1]; // points earned this round (shown on reveal)
 };
 
+// Werewolf: hidden roles on the shared Party skeleton. No content packs -- the
+// roles are code. Party::round counts nights (day 1 follows night 1), and
+// Party::phase 2 is subdivided by `stage` (WW_S_*) into roles -> night -> dawn ->
+// day -> dusk -> night -> ...
+//
+// EVERY field below is secret by default. wwJson() is the only place a role
+// leaves the engine, and it applies exactly one rule (wwMaySeeRole): you always
+// see your own role, werewolves see each other, a dead player's role is public,
+// and at game end everything opens up.
+struct WerewolfState {
+    Party pt;
+    uint8_t stage; // WW_S_*
+    uint8_t role[HA_MAX_PLAYERS + 1]; // WW_VILLAGER / WW_WOLF / WW_SEER, 0 = spectator
+    bool alive[HA_MAX_PLAYERS + 1];
+    bool revealed[HA_MAX_PLAYERS + 1]; // role is public (died, or the game ended)
+    int8_t kill[HA_MAX_PLAYERS + 1]; // a wolf's night target pid, -1 = not picked
+    int8_t accuse[HA_MAX_PLAYERS + 1]; // a player's day vote pid, -1 = not voted
+    uint8_t seer; // the seer's pid this game, 0 = none left
+    uint8_t seerTarget; // who the seer checked this night, 0 = nobody yet
+    bool seerResult; // ...and whether they are a werewolf. Seer's payload only.
+    uint8_t victim; // pid the wolves took last night, 0 = nobody died
+    uint8_t lynched; // pid the village voted out today, 0 = nobody
+    uint8_t winner; // 0 undecided, WW_VILLAGER = village, WW_WOLF = wolves
+};
+
 struct PongMatch {
     bool used;
     uint8_t a, b; // a = left paddle, b = right paddle
@@ -459,6 +505,7 @@ public:
         spectrumClear();
         kmkClear();
         chessClear();
+        wwClear();
     }
 
     // ---- roster ----
@@ -526,6 +573,7 @@ public:
         spectrumClear();
         kmkClear();
         chessClear();
+        wwClear();
         pushAll();
     }
 
@@ -753,6 +801,8 @@ public:
             kmkClear();
         else if(_active == HA_GAME_CHESS)
             chessClear();
+        else if(_active == HA_GAME_WEREWOLF)
+            wwClear();
         pushAll();
     }
 
@@ -779,6 +829,8 @@ public:
             kmkTick(now);
         else if(_active == HA_GAME_CHESS)
             chessTick(now);
+        else if(_active == HA_GAME_WEREWOLF)
+            wwTick(now);
     }
 
     // ---- player input (parsed WS JSON) ----
@@ -817,6 +869,7 @@ public:
             gcReady(pid, r);
             spectrumReady(pid, r);
             kmkReady(pid, r);
+            wwReady(pid, r);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "topic", &v)) {
             triviaVote(pid, v);
         } else if(strcmp(type, "vote") == 0 && ha_json_int(json, "pack", &v)) {
@@ -836,6 +889,12 @@ public:
             if(ha_json_int(json, "kiss", &k) && ha_json_int(json, "marry", &m) &&
                ha_json_int(json, "kill", &x))
                 kmkAssign(pid, k, m, x);
+        } else if(strcmp(type, "kill") == 0 && ha_json_int(json, "n", &v)) {
+            wwKill(pid, v); // werewolf's night target
+        } else if(strcmp(type, "see") == 0 && ha_json_int(json, "n", &v)) {
+            wwSee(pid, v); // seer's night check
+        } else if(strcmp(type, "accuse") == 0 && ha_json_int(json, "n", &v)) {
+            wwAccuse(pid, v); // day vote
         } else if(strcmp(type, "again") == 0) {
             triviaAgain(pid);
             drawAgain(pid);
@@ -845,6 +904,7 @@ public:
             gcAgain(pid);
             spectrumAgain(pid);
             kmkAgain(pid);
+            wwAgain(pid);
         } else if(strcmp(type, "say") == 0) {
             char t[120];
             if(ha_json_str(json, "text", t, sizeof(t))) onSay(pid, t);
@@ -923,6 +983,7 @@ private:
     SpectrumState _spec = {};
     KmkState _kmk = {};
     ChessMatch _cm[CHESS_MAX] = {};
+    WerewolfState _ww = {};
 
     uint8_t freePid() {
         for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
@@ -966,6 +1027,8 @@ private:
                 haWsSendWs(_p[pid].wsId, kmkJson(pid));
             else if(_active == HA_GAME_CHESS)
                 haWsSendWs(_p[pid].wsId, chessJson(pid));
+            else if(_active == HA_GAME_WEREWOLF)
+                haWsSendWs(_p[pid].wsId, wwJson(pid));
         }
     }
 
@@ -1026,6 +1089,8 @@ private:
             return "kmk";
         case HA_GAME_CHESS:
             return "chess";
+        case HA_GAME_WEREWOLF:
+            return "werewolf";
         default:
             return "none";
         }
@@ -2350,6 +2415,8 @@ private:
             spectrumCheckStart();
         else if(_active == HA_GAME_KMK)
             kmkCheckStart();
+        else if(_active == HA_GAME_WEREWOLF)
+            wwRosterChanged();
     }
 
     // ---------- would you rather (live A/B poll) ----------
@@ -4641,6 +4708,484 @@ private:
                  String(_kmk.stage == 0 ? KMK_CHOOSE_SECS : KMK_GUESS_SECS);
         }
         s += ",\"scores\":" + playersJson() + "}";
+        return s;
+    }
+
+    // ---------- Werewolf (hidden roles, night/day social deduction) ----------
+    // The phones are the referee, not a chat client: players argue out loud in the
+    // room and the engine only deals the roles, runs the clock, and resolves the
+    // votes. Every phase is on a timer, so a distracted player is skipped rather
+    // than allowed to stall the room.
+    //
+    // Secrecy is the game. Roles never leave this engine except through wwJson(),
+    // which asks wwMaySeeRole() about every single player it emits -- so a role a
+    // viewer is not entitled to simply is not in the bytes their phone receives.
+    // The seer's reading and the wolves' night votes are gated the same way.
+
+    void wwClear() {
+        partyClear(_ww.pt);
+        _ww.stage = WW_S_ROLES;
+        _ww.seer = 0;
+        _ww.seerTarget = 0;
+        _ww.seerResult = false;
+        _ww.victim = 0;
+        _ww.lynched = 0;
+        _ww.winner = 0;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _ww.role[i] = 0;
+            _ww.alive[i] = false;
+            _ww.revealed[i] = false;
+            _ww.kill[i] = -1;
+            _ww.accuse[i] = -1;
+        }
+    }
+
+    // Living players still holding a role (a mid-game joiner has role 0 and only
+    // watches, so they count for nothing here).
+    int wwAliveWolves() {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _ww.alive[i] && _ww.role[i] == WW_WOLF) n++;
+        return n;
+    }
+    int wwAliveVillage() {
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _ww.alive[i] && _ww.role[i] != 0 && _ww.role[i] != WW_WOLF) n++;
+        return n;
+    }
+
+    void wwReady(uint8_t pid, bool val) {
+        if(_active != HA_GAME_WEREWOLF) return;
+        if(_ww.pt.phase != 0 && _ww.pt.phase != 4) return;
+        if(_ww.pt.phase == 4 && val) wwClear(); // ready from the final screen -> new game
+        _ww.pt.ready[pid] = val;
+        wwCheckStart();
+        pushAll();
+    }
+
+    void wwAgain(uint8_t pid) {
+        (void)pid;
+        if(_active != HA_GAME_WEREWOLF || _ww.pt.phase != 4) return;
+        wwClear();
+        pushAll();
+    }
+
+    // Needs a real village: with fewer than WW_MIN_PLAYERS the wolf/seer split is
+    // degenerate, so the countdown simply does not arm.
+    void wwCheckStart() {
+        Party& pt = _ww.pt;
+        bool enough = connectedCount() >= WW_MIN_PLAYERS;
+        if(pt.phase == 0 && enough && partyAllReady(pt)) {
+            pt.phase = 1;
+            pt.countdownEnd = millis() + (uint32_t)PARTY_COUNTDOWN * 1000;
+            pt.lastSec = -1;
+        } else if(pt.phase == 1 && (!enough || !partyAllReady(pt))) {
+            pt.phase = 0;
+        }
+    }
+
+    // Deal roles over a shuffled roster: about one werewolf per four players (at
+    // least one), exactly one seer, everyone else a villager. The wolf count is
+    // capped at (n-1)/2 so the village never starts a game it has already lost.
+    void wwDeal() {
+        uint8_t ord[HA_MAX_PLAYERS];
+        int n = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used) ord[n++] = i;
+        for(int i = n - 1; i > 0; i--) {
+            int j = (int)(esp_random() % (uint32_t)(i + 1));
+            uint8_t t = ord[i];
+            ord[i] = ord[j];
+            ord[j] = t;
+        }
+        int wolves = n / 4;
+        if(wolves < 1) wolves = 1;
+        if(wolves > (n - 1) / 2) wolves = (n - 1) / 2;
+        _ww.seer = 0;
+        for(int i = 0; i < n; i++) {
+            uint8_t pid = ord[i];
+            _ww.alive[pid] = true;
+            _ww.revealed[pid] = false;
+            if(i < wolves) {
+                _ww.role[pid] = WW_WOLF;
+            } else if(i == wolves) {
+                _ww.role[pid] = WW_SEER;
+                _ww.seer = pid;
+            } else {
+                _ww.role[pid] = WW_VILLAGER;
+            }
+        }
+    }
+
+    bool wwSeerActive() {
+        return _ww.seer && _p[_ww.seer].used && _ww.alive[_ww.seer];
+    }
+
+    // The night ends early once every living wolf has named a victim and the seer
+    // (if there still is one) has looked at somebody.
+    bool wwNightDone() {
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _ww.alive[i] && _ww.role[i] == WW_WOLF && _ww.kill[i] < 0)
+                return false;
+        if(wwSeerActive() && _ww.seerTarget == 0) return false;
+        return true;
+    }
+
+    bool wwDayDone() {
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(_p[i].used && _ww.alive[i] && _ww.role[i] != 0 && _ww.accuse[i] < 0) return false;
+        return true;
+    }
+
+    // Tally a pid-indexed ballot: most votes wins, a tie is broken uniformly at
+    // random among the tied, and an empty ballot (nobody voted) resolves to 0 --
+    // "nothing happened". Used for both the wolves' night pick and the day vote.
+    static uint8_t wwTally(const int* votes) {
+        int best = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(votes[i] > best) best = votes[i];
+        if(best == 0) return 0;
+        uint8_t tie[HA_MAX_PLAYERS];
+        int tn = 0;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++)
+            if(votes[i] == best) tie[tn++] = i;
+        return tie[(int)random(tn)];
+    }
+
+    uint8_t wwNightVictim() {
+        int votes[HA_MAX_PLAYERS + 1] = {0};
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used || !_ww.alive[i] || _ww.role[i] != WW_WOLF) continue;
+            int8_t t = _ww.kill[i];
+            // Re-validate: the target may have left the party since the tap.
+            if(t < 1 || t > HA_MAX_PLAYERS || !_p[t].used) continue;
+            if(!_ww.alive[t] || _ww.role[t] == WW_WOLF) continue;
+            votes[t]++;
+        }
+        return wwTally(votes);
+    }
+
+    uint8_t wwDayOutcast() {
+        int votes[HA_MAX_PLAYERS + 1] = {0};
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used || !_ww.alive[i] || _ww.role[i] == 0) continue;
+            int8_t t = _ww.accuse[i];
+            if(t < 1 || t > HA_MAX_PLAYERS || !_p[t].used) continue;
+            if(!_ww.alive[t] || _ww.role[t] == 0) continue;
+            votes[t]++;
+        }
+        return wwTally(votes);
+    }
+
+    // Villagers win when the last werewolf is out; werewolves win as soon as they
+    // are no longer outnumbered (from there they can force any lynch they like).
+    // Every player still alive on the winning side scores 1 -- surviving is the
+    // whole job -- so the shared leaderboard keeps its meaning across games.
+    bool wwCheckEnd(uint32_t now) {
+        int w = wwAliveWolves(), v = wwAliveVillage();
+        if(w > 0 && w < v) return false;
+        _ww.winner = (w == 0) ? WW_VILLAGER : WW_WOLF;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used || _ww.role[i] == 0) continue;
+            _ww.revealed[i] = true; // the reckoning: every role is public now
+            if(!_ww.alive[i]) continue;
+            if((_ww.role[i] == WW_WOLF) != (_ww.winner == WW_WOLF)) continue;
+            _p[i].score += 1;
+            haUartScore(i, 1, "werewolf");
+        }
+        haUartRoundResult(
+            String("{\"werewolf\":\"") + (_ww.winner == WW_WOLF ? "wolves" : "villagers") +
+            " win\"}");
+        _ww.pt.phase = 4;
+        _ww.pt.deadline = now;
+        pushAll();
+        return true;
+    }
+
+    // Nightfall: the wolves converge on a victim, the seer checks somebody, and
+    // everyone else waits it out. Also the point where a finished game is caught.
+    void wwNight(uint32_t now) {
+        if(wwCheckEnd(now)) return;
+        Party& pt = _ww.pt;
+        pt.round++;
+        _ww.stage = WW_S_NIGHT;
+        _ww.victim = 0;
+        _ww.lynched = 0;
+        _ww.seerTarget = 0; // last night's reading expires with the night
+        _ww.seerResult = false;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) {
+            _ww.kill[i] = -1;
+            _ww.accuse[i] = -1;
+        }
+        pt.deadline = now + (uint32_t)WW_NIGHT_SECS * 1000;
+        pushAll();
+    }
+
+    void wwResolveNight(uint32_t now) {
+        _ww.victim = wwNightVictim();
+        if(_ww.victim) {
+            _ww.alive[_ww.victim] = false;
+            _ww.revealed[_ww.victim] = true; // a body's role is public
+        }
+        _ww.stage = WW_S_DAWN;
+        _ww.pt.deadline = now + WW_ANNOUNCE_MS;
+        // "draw" is the engine's generic host-facing status-line key (Spectrum
+        // reuses it the same way); the Flipper console prints whatever it holds.
+        haUartEvent(
+            String("{\"draw\":\"night ") + _ww.pt.round + ": " +
+            (_ww.victim ? ha_json_escape(_p[_ww.victim].nick) + " died" : String("nobody died")) +
+            "\"}");
+        pushAll();
+    }
+
+    void wwDay(uint32_t now) {
+        if(wwCheckEnd(now)) return;
+        _ww.stage = WW_S_DAY;
+        for(int i = 0; i <= HA_MAX_PLAYERS; i++) _ww.accuse[i] = -1;
+        _ww.pt.deadline = now + (uint32_t)WW_DAY_SECS * 1000;
+        pushAll();
+    }
+
+    void wwResolveDay(uint32_t now) {
+        _ww.lynched = wwDayOutcast();
+        if(_ww.lynched) {
+            _ww.alive[_ww.lynched] = false;
+            _ww.revealed[_ww.lynched] = true;
+        }
+        _ww.stage = WW_S_DUSK;
+        _ww.pt.deadline = now + WW_ANNOUNCE_MS;
+        haUartEvent(
+            String("{\"draw\":\"day ") + _ww.pt.round + ": " +
+            (_ww.lynched ? ha_json_escape(_p[_ww.lynched].nick) + " voted out" :
+                           String("no majority")) +
+            "\"}");
+        pushAll();
+    }
+
+    void wwKill(uint8_t pid, int target) {
+        if(_active != HA_GAME_WEREWOLF || _ww.pt.phase != 2 || _ww.stage != WW_S_NIGHT) return;
+        if(_ww.role[pid] != WW_WOLF || !_ww.alive[pid]) return;
+        if(target < 1 || target > HA_MAX_PLAYERS || !_p[target].used) return;
+        // A wolf hunts outside the pack: living non-wolves only.
+        if(!_ww.alive[target] || _ww.role[target] == 0 || _ww.role[target] == WW_WOLF) return;
+        _ww.kill[pid] = (int8_t)target;
+        if(wwNightDone()) wwResolveNight(millis());
+        else pushAll();
+    }
+
+    void wwSee(uint8_t pid, int target) {
+        if(_active != HA_GAME_WEREWOLF || _ww.pt.phase != 2 || _ww.stage != WW_S_NIGHT) return;
+        if(_ww.role[pid] != WW_SEER || !_ww.alive[pid]) return;
+        if(_ww.seerTarget) return; // one reading per night
+        if(target < 1 || target > HA_MAX_PLAYERS || !_p[target].used || target == pid) return;
+        if(!_ww.alive[target] || _ww.role[target] == 0) return;
+        _ww.seerTarget = (uint8_t)target;
+        _ww.seerResult = (_ww.role[target] == WW_WOLF);
+        if(wwNightDone()) wwResolveNight(millis());
+        else pushAll();
+    }
+
+    void wwAccuse(uint8_t pid, int target) {
+        if(_active != HA_GAME_WEREWOLF || _ww.pt.phase != 2 || _ww.stage != WW_S_DAY) return;
+        if(_ww.role[pid] == 0 || !_ww.alive[pid]) return; // the dead do not vote
+        if(target < 1 || target > HA_MAX_PLAYERS || !_p[target].used || target == pid) return;
+        if(!_ww.alive[target] || _ww.role[target] == 0) return;
+        _ww.accuse[pid] = (int8_t)target;
+        if(wwDayDone()) wwResolveDay(millis());
+        else pushAll();
+    }
+
+    // A join or a leave mid-game. A leaver is wiped completely (their pid can be
+    // handed to the next player to join, who must arrive as a spectator), and the
+    // win condition is re-checked because walking out can decide the game: the
+    // last werewolf leaving is a village win.
+    void wwRosterChanged() {
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(_p[i].used) continue;
+            _ww.role[i] = 0;
+            _ww.alive[i] = false;
+            _ww.revealed[i] = false;
+            _ww.kill[i] = -1;
+            _ww.accuse[i] = -1;
+            _ww.pt.ready[i] = false;
+            if(_ww.seer == i) _ww.seer = 0;
+            if(_ww.seerTarget == i) _ww.seerTarget = 0;
+        }
+        if(_ww.pt.phase != 2) {
+            wwCheckStart();
+            return;
+        }
+        if(wwAliveWolves() == 0 && wwAliveVillage() == 0) {
+            wwClear(); // everyone holding a role walked out; back to the lobby
+            return;
+        }
+        wwCheckEnd(millis());
+    }
+
+    void wwTick(uint32_t now) {
+        Party& pt = _ww.pt;
+        if(pt.phase == 1) {
+            if(partyCountdownDone(pt, now)) {
+                pt.round = 0;
+                wwDeal();
+                pt.phase = 2;
+                _ww.stage = WW_S_ROLES;
+                pt.deadline = now + (uint32_t)WW_ROLES_SECS * 1000;
+                pushAll();
+            }
+        } else if(pt.phase == 2) {
+            if((int32_t)(now - pt.deadline) < 0) return;
+            if(_ww.stage == WW_S_ROLES || _ww.stage == WW_S_DUSK)
+                wwNight(now);
+            else if(_ww.stage == WW_S_NIGHT)
+                wwResolveNight(now); // window closed: whoever did not tap is skipped
+            else if(_ww.stage == WW_S_DAWN)
+                wwDay(now);
+            else if(_ww.stage == WW_S_DAY)
+                wwResolveDay(now);
+        }
+    }
+
+    // THE secrecy rule, in one place. Everything wwJson() emits about somebody
+    // else's role goes through here first.
+    bool wwMaySeeRole(uint8_t viewer, uint8_t target) {
+        if(_ww.role[target] == 0) return false; // spectators have no role to show
+        if(viewer == target) return true; // your own role is always yours
+        if(_ww.revealed[target]) return true; // dead, or the game is over
+        return _ww.role[viewer] == WW_WOLF && _ww.role[target] == WW_WOLF; // the pack
+    }
+
+    static const char* wwStageName(uint8_t s) {
+        switch(s) {
+        case WW_S_ROLES:
+            return "roles";
+        case WW_S_NIGHT:
+            return "night";
+        case WW_S_DAWN:
+            return "dawn";
+        case WW_S_DAY:
+            return "day";
+        default:
+            return "dusk";
+        }
+    }
+
+    // The roster as seen by `pid`: identity and life/death are public, a role is not.
+    String wwRosterJson(uint8_t pid) {
+        String s = "[";
+        bool first = true;
+        for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+            if(!_p[i].used) continue;
+            if(!first) s += ",";
+            first = false;
+            s += "{\"pid\":";
+            s += i;
+            s += ",\"nick\":\"";
+            s += ha_json_escape(_p[i].nick);
+            s += "\",\"avatar\":\"";
+            s += ha_json_escape(_p[i].avatar);
+            s += "\",\"in\":";
+            s += _ww.role[i] ? "true" : "false";
+            s += ",\"alive\":";
+            s += _ww.alive[i] ? "true" : "false";
+            if(wwMaySeeRole(pid, i)) {
+                s += ",\"role\":";
+                s += _ww.role[i];
+            }
+            s += "}";
+        }
+        s += "]";
+        return s;
+    }
+
+    String wwJson(uint8_t pid) {
+        Party& pt = _ww.pt;
+        if(pt.phase == 0)
+            return String("{\"t\":\"werewolf\",\"phase\":\"lobby\",\"you\":") + pid +
+                   ",\"players\":" + partyPlayersJson(pt) + ",\"min\":" + WW_MIN_PLAYERS +
+                   ",\"enough\":" + (connectedCount() >= WW_MIN_PLAYERS ? "true" : "false") + "}";
+        if(pt.phase == 1)
+            return String("{\"t\":\"werewolf\",\"phase\":\"countdown\",\"sec\":") +
+                   partyCountdownSec(pt) + "}";
+        if(pt.phase == 4)
+            return String("{\"t\":\"werewolf\",\"phase\":\"final\",\"you\":") + pid +
+                   ",\"winner\":\"" + (_ww.winner == WW_WOLF ? "wolves" : "villagers") +
+                   "\",\"myrole\":" + _ww.role[pid] + ",\"players\":" + wwRosterJson(pid) +
+                   ",\"board\":" + triviaBoard() + "}";
+
+        String s = String("{\"t\":\"werewolf\",\"phase\":\"play\",\"stage\":\"") +
+                   wwStageName(_ww.stage) + "\",\"you\":" + pid + ",\"day\":" + pt.round +
+                   ",\"myrole\":" + _ww.role[pid] +
+                   ",\"alive\":" + (_ww.alive[pid] ? "true" : "false") +
+                   ",\"wolvesleft\":" + wwAliveWolves() + ",\"villagersleft\":" + wwAliveVillage() +
+                   ",\"players\":" + wwRosterJson(pid);
+
+        // The pack's own tally, so the wolves can converge on one victim. Wolves
+        // only: a villager's payload carries no trace that a night vote happened.
+        if(_ww.stage == WW_S_NIGHT && _ww.role[pid] == WW_WOLF && _ww.alive[pid]) {
+            s += ",\"mykill\":";
+            s += (int)_ww.kill[pid];
+            s += ",\"packvotes\":[";
+            bool first = true;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used || !_ww.alive[i] || _ww.role[i] != WW_WOLF) continue;
+                if(_ww.kill[i] < 0) continue;
+                if(!first) s += ",";
+                first = false;
+                s += "{\"by\":";
+                s += i;
+                s += ",\"pid\":";
+                s += (int)_ww.kill[i];
+                s += "}";
+            }
+            s += "]";
+        }
+        // The seer's reading, from the moment they look until the next night falls
+        // -- and only ever in the seer's own payload.
+        if(_ww.role[pid] == WW_SEER && _ww.seerTarget && _p[_ww.seerTarget].used) {
+            s += ",\"check\":{\"pid\":";
+            s += _ww.seerTarget;
+            s += ",\"nick\":\"";
+            s += ha_json_escape(_p[_ww.seerTarget].nick);
+            s += "\",\"wolf\":";
+            s += _ww.seerResult ? "true" : "false";
+            s += "}";
+        }
+        if(_ww.stage == WW_S_DAWN) {
+            s += ",\"victim\":";
+            s += _ww.victim;
+        }
+        if(_ww.stage == WW_S_DAY) {
+            // The day vote is out loud by design: everyone watches the tally build.
+            s += ",\"myvote\":";
+            s += (int)_ww.accuse[pid];
+            s += ",\"votes\":[";
+            bool first = true;
+            for(uint8_t i = 1; i <= HA_MAX_PLAYERS; i++) {
+                if(!_p[i].used || _ww.accuse[i] < 0) continue;
+                if(!first) s += ",";
+                first = false;
+                s += "{\"by\":";
+                s += i;
+                s += ",\"pid\":";
+                s += (int)_ww.accuse[i];
+                s += "}";
+            }
+            s += "]";
+        }
+        if(_ww.stage == WW_S_DUSK) {
+            s += ",\"lynched\":";
+            s += _ww.lynched;
+        }
+        s += ",\"deadline\":";
+        s += pt.deadline;
+        s += ",\"dur\":";
+        s += (_ww.stage == WW_S_ROLES ? WW_ROLES_SECS :
+              _ww.stage == WW_S_NIGHT ? WW_NIGHT_SECS :
+              _ww.stage == WW_S_DAY   ? WW_DAY_SECS :
+                                        (int)(WW_ANNOUNCE_MS / 1000));
+        s += "}";
         return s;
     }
 };

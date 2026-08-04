@@ -4,6 +4,24 @@ All notable changes to Hotspot Arcade are documented here. The format is based o
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Werewolf**, a 16th game (whole-group party). The phones are the referee, not a chat
+  client: they deal the secret roles — about one werewolf per four players, one seer, the
+  rest villagers — and run the night/day clock, while the deduction happens out loud in
+  the room. Night (45s): the werewolves converge on a victim and the seer privately checks
+  one player. Day (90s): the body is announced with its role, then everyone votes a suspect
+  out. Villagers win when the last wolf is gone, werewolves when they are no longer
+  outnumbered; every player still alive on the winning side scores 1. Secrecy is enforced
+  server-side — the per-player serializer only tells a phone what it is entitled to know,
+  so a role never appears in another player's payload before a legitimate reveal (death or
+  game end). Every phase is on a timer, so a player who does not act is simply skipped.
+  Needs five players; no content packs. Ships localized in English and German. Firmware
+  **v18** (game id `18`; ids 16 and 17 are claimed by games on other open branches, so this
+  one is trivially renumbered down if either lands first).
+
 ## [1.6.0] - 2026-08-03
 
 Chess joins as the fifteenth game. Firmware **v17**.

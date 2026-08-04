@@ -692,3 +692,37 @@ h3{margin:0; font-weight:600}
   font-size:30px; background:var(--surface-2); border:2px solid var(--line);
   border-radius:var(--radius); color:var(--text)}
 .ch-promo-btn:active{border-color:var(--orange); transform:translateY(1px)}
+
+/* ---- Werewolf ----------------------------------------------------------- */
+/* The night stages tint the whole screen so a glance tells you the room is
+   asleep; day stages drop back to the normal palette. */
+#werewolf.ww-night{background:linear-gradient(180deg,rgba(40,60,120,.20),transparent 260px)}
+.ww-banner{text-align:center; font-size:20px; font-weight:800; color:var(--orange-bright);
+  margin:10px 0 4px}
+.ww-note{text-align:center; color:var(--text-dim); font-size:13px; margin:0 0 10px;
+  min-height:16px}
+.ww-counts{text-align:center; color:var(--text-mute); font-size:12px; margin-top:8px}
+.ww-check{text-align:center; font-weight:800; font-size:15px; padding:8px;
+  border:2px solid var(--line); background:var(--surface-2); margin:8px 0}
+.ww-check.bad{color:var(--bad); border-color:var(--bad)}
+.ww-check.good{color:var(--good); border-color:var(--good)}
+.ww-list{display:flex; flex-direction:column; gap:6px}
+.ww-row{display:flex; align-items:center; gap:8px; background:var(--surface-2);
+  border:2px solid var(--line); padding:10px 12px; min-height:48px}
+.ww-row.tap{cursor:pointer}
+.ww-row.tap:active{border-color:var(--orange); transform:translateY(1px)}
+.ww-row.self{border-color:var(--orange)}
+.ww-row.out{opacity:.45; text-decoration:line-through}
+.ww-av{font-size:20px; line-height:1}
+.ww-name{flex:1; font-weight:800; font-size:15px}
+.ww-tag{font-weight:700; font-size:12px; padding:3px 7px; border:2px solid var(--line);
+  white-space:nowrap}
+.ww-tag.r1{color:var(--text-dim)}                                   /* villager */
+.ww-tag.r2{color:var(--bad); border-color:var(--bad)}               /* werewolf */
+.ww-tag.r3{color:var(--orange-bright); border-color:var(--orange)}  /* seer */
+.ww-tag.ghost{color:var(--text-mute); border-style:dashed}
+.ww-count{font-weight:800; font-size:15px; min-width:22px; text-align:center;
+  color:var(--orange-bright)}
+.ww-winner{text-align:center; font-size:22px; font-weight:800; margin:10px 0}
+.ww-winner.bad{color:var(--bad)}
+.ww-winner.good{color:var(--good)}
